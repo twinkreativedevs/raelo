@@ -98,16 +98,36 @@ export interface ActivityEvent {
 export interface Database {
   public: {
     Tables: {
-      profiles: { Row: Profile; Insert: Partial<Profile> & { id: string }; Update: Partial<Profile> };
-      packages: { Row: Package; Insert: Partial<Package>; Update: Partial<Package> };
-      subscriptions: { Row: Subscription; Insert: Partial<Subscription>; Update: Partial<Subscription> };
+      profiles: {
+        Row: Profile;
+        Insert: Partial<Profile> & { id: string };
+        Update: Partial<Profile>;
+      };
+      packages: {
+        Row: Package;
+        Insert: Partial<Package> & { name: string; slug: string; price: number };
+        Update: Partial<Package>;
+      };
+      subscriptions: {
+        Row: Subscription;
+        Insert: Partial<Subscription> & { user_id: string; package_id: string };
+        Update: Partial<Subscription>;
+      };
       onboarding_responses: {
         Row: OnboardingResponse;
         Insert: Partial<OnboardingResponse> & { user_id: string };
         Update: Partial<OnboardingResponse>;
       };
-      content_items: { Row: ContentItem; Insert: Partial<ContentItem>; Update: Partial<ContentItem> };
-      activity_events: { Row: ActivityEvent; Insert: Partial<ActivityEvent>; Update: Partial<ActivityEvent> };
+      content_items: {
+        Row: ContentItem;
+        Insert: Partial<ContentItem> & { subscription_id: string; title: string };
+        Update: Partial<ContentItem>;
+      };
+      activity_events: {
+        Row: ActivityEvent;
+        Insert: Partial<ActivityEvent> & { event_type: string };
+        Update: Partial<ActivityEvent>;
+      };
     };
   };
 }
