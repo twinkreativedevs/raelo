@@ -1,4 +1,18 @@
-export default function Home() {
+import { createClient } from "@/lib/supabase/server";
+
+function formatPrice(price: number, currency: string) {
+  const symbol = currency === "NGN" ? "₦" : `${currency} `;
+  return `${symbol}${Number(price).toLocaleString()}`;
+}
+
+export default async function Home() {
+  const supabase = await createClient();
+  const { data: packages } = await supabase
+    .from("packages")
+    .select("id, name, slug, price, currency")
+    .eq("active", true)
+    .order("price", { ascending: true });
+
   return (
     <main className="min-h-screen bg-white text-black">
       {/* Header */}
@@ -172,22 +186,19 @@ export default function Home() {
         </div>
 
         <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            ["Starter", "₦45,000"],
-            ["Growth", "₦85,000"],
-            ["Pro", "₦145,000"],
-            ["Agency", "₦320,000"],
-          ].map(([name, price]) => (
+          {(packages ?? []).map((pkg) => (
             <div
-              key={name}
+              key={pkg.id}
               className="rounded-3xl border border-black/10 p-7"
             >
-              <h3 className="text-2xl font-bold">{name}</h3>
+              <h3 className="text-2xl font-bold">{pkg.name}</h3>
 
-              <p className="mt-6 text-3xl font-bold">{price}</p>
+              <p className="mt-6 text-3xl font-bold">
+                {formatPrice(pkg.price, pkg.currency)}
+              </p>
 
               <a
-                href="#"
+                href={`/checkout/${pkg.slug}`}
                 className="mt-8 block rounded-full bg-black px-5 py-4 text-center font-semibold text-white"
               >
                 Choose Plan
