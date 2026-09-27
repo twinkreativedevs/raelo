@@ -1,9 +1,14 @@
+import "server-only";
+
+import { createHmac, timingSafeEqual } from "crypto";
+
 // Reusable Paystack service module. All Paystack HTTP calls go through
 // here so the rest of the app never talks to the Paystack API directly.
 // Server-only: relies on PAYSTACK_SECRET_KEY, which must never be exposed
 // to the browser (no NEXT_PUBLIC_ prefix).
 
-const PAYSTACK_BASE_URL = "https://api.paystack.co";
+// PAYSTACK_API_URL is only for tests/proxies.
+const PAYSTACK_BASE_URL = process.env.PAYSTACK_API_URL ?? "https://api.paystack.co";
 
 function getSecretKey() {
   const key = process.env.PAYSTACK_SECRET_KEY;
@@ -58,14 +63,32 @@ export async function initializeTransaction(
 
 export type PaystackVerificationStatus = "success" | "failed" | "abandoned" | string;
 
+export interface PaystackAuthorization {
+  authorization_code: string;
+  bin: string | null;
+  last4: string | null;
+  exp_month: string | null;
+  exp_year: string | null;
+  channel: string | null;
+  card_type: string | null;
+  bank: string | null;
+  brand: string | null;
+  reusable: boolean;
+  signature: string | null;
+}
+
 export interface VerifyTransactionResult {
+  id: number;
   status: PaystackVerificationStatus;
+  /** e.g. "card", "bank", "ussd", "bank_transfer" */
+  channel: string | null;
   reference: string;
   /** Amount actually paid, in kobo. */
   amount: number;
   currency: string;
   paid_at: string | null;
-  customer: { email: string };
+  customer: { email: string; customer_code?: string | null };
+  authorization?: PaystackAuthorization | null;
 }
 
 export async function verifyTransaction(
@@ -86,4 +109,66 @@ export async function verifyTransaction(
   }
 
   return json.data as VerifyTransactionResult;
+}
+
+export interface ChargeAuthorizationParams {
+  email: string;
+  authorizationCode: string;
+  /** Amount in the smallest currency unit (kobo for NGN). */
+  amountKobo: number;
+  reference: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Charges a saved card (recurring billing). Paystack answers synchronously
+ * with the transaction; `status` is usually "success" or "failed", but can
+ * be pending/processing, in which case the webhook completes it later.
+ */
+export async function chargeAuthorization(
+  params: ChargeAuthorizationParams,
+): Promise<VerifyTransactionResult & { gateway_response?: string }> {
+  const res = await fetch(`${PAYSTACK_BASE_URL}/transaction/charge_authorization`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getSecretKey()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: params.email,
+      amount: params.amountKobo,
+      authorization_code: params.authorizationCode,
+      reference: params.reference,
+      metadata: params.metadata,
+    }),
+    cache: "no-store",
+  });
+
+  const json = await res.json();
+
+  if (!res.ok || !json.status) {
+    throw new Error(json.message || "Failed to charge authorization");
+  }
+
+  return json.data;
+}
+
+/**
+ * Checks the `x-paystack-signature` header: an HMAC-SHA512 of the raw
+ * request body keyed with our secret key. Must run on the exact bytes
+ * received, before any JSON parsing.
+ */
+export function isValidWebhookSignature(
+  rawBody: string,
+  signature: string | null,
+): boolean {
+  if (!signature) return false;
+
+  const expected = createHmac("sha512", getSecretKey())
+    .update(rawBody)
+    .digest("hex");
+
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(signature, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
 }

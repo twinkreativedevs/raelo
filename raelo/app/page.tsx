@@ -1,3 +1,12 @@
+import Link from "next/link";
+
+import { formatPrice, getActivePackages } from "@/lib/packages";
+import { getPublicAssistant } from "@/lib/assistant";
+import { AssistantWidget } from "@/components/assistant-widget";
+
+// Packages come from the database; re-fetch at most every 5 minutes.
+export const revalidate = 300;
+
 const problems = [
   {
     title: "You're not visible enough.",
@@ -48,46 +57,6 @@ const process = [
   },
 ];
 
-const packages = [
-  {
-    name: "STARTER",
-    price: "₦45,000",
-    details: [
-      "1 brand (1 platform)",
-      "12 posts per month",
-      "Basic engagement support",
-    ],
-  },
-  {
-    name: "GROWTH",
-    price: "₦85,000",
-    popular: true,
-    details: [
-      "1 brand (2 platforms)",
-      "24 posts per month",
-      "Advanced engagement support",
-    ],
-  },
-  {
-    name: "PRO",
-    price: "₦145,000",
-    details: [
-      "1 brand (3 platforms)",
-      "40 posts per month",
-      "Premium engagement support",
-    ],
-  },
-  {
-    name: "BUSINESS",
-    price: "₦320,000",
-    details: [
-      "Multiple brands (up to 5)",
-      "Custom post volume",
-      "Dedicated account manager",
-    ],
-  },
-];
-
 const audiences = [
   {
     title: "Business Owners",
@@ -115,7 +84,11 @@ const faqs = [
   "Do you manage multiple platforms?",
 ];
 
-export default function Home() {
+export default async function Home() {
+  const packages = await getActivePackages();
+  // The widget shows only when enabled in Admin → Settings and a Groq key is set.
+  const assistant = await getPublicAssistant();
+
   return (
     <main className="min-h-screen bg-white text-[#111827]">
 
@@ -123,14 +96,14 @@ export default function Home() {
       <header className="sticky top-0 z-50 border-b border-black/5 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-[72px] max-w-[1280px] items-center justify-between px-6 lg:px-10">
 
-          <a href="/" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[#ed1c24] text-xl font-black text-white">
               R
             </div>
             <span className="text-xl font-bold text-[#ed1c24]">
               Raelo
             </span>
-          </a>
+          </Link>
 
           <nav className="hidden items-center gap-8 md:flex">
             <a href="#home" className="text-sm font-medium">
@@ -151,12 +124,12 @@ export default function Home() {
           </nav>
 
           <div className="flex items-center gap-3">
-            <a
-              href="#"
+            <Link
+              href="/auth/login"
               className="hidden rounded-full border border-black/30 px-6 py-2.5 text-sm font-semibold md:block"
             >
               Login
-            </a>
+            </Link>
 
             <a
               href="#packages"
@@ -262,14 +235,14 @@ export default function Home() {
             </p>
 
             <h2 className="mt-4 text-4xl font-black leading-tight tracking-tight sm:text-5xl">
-              You're losing
+              You&apos;re losing
               <br />
               the <span className="text-[#ed1c24]">feeling fight.</span>
             </h2>
 
             <p className="mt-6 max-w-[500px] leading-7 text-black/60">
               You work hard, create great content, and have a vision for your
-              brand, but keeping up with social media is overwhelming. It's
+              brand, but keeping up with social media is overwhelming. It&apos;s
               time-consuming, stressful and often feels like a losing battle.
             </p>
 
@@ -277,7 +250,7 @@ export default function Home() {
               <li>✓ Inconsistent posting and low engagement</li>
               <li>✓ Creative blocks and lack of fresh ideas</li>
               <li>✓ Hard to keep up with trends and algorithm changes</li>
-              <li>✓ Wasting time on tasks that don't grow your brand</li>
+              <li>✓ Wasting time on tasks that don&apos;t grow your brand</li>
             </ul>
           </div>
 
@@ -314,7 +287,7 @@ export default function Home() {
             </h2>
 
             <p className="mt-5 text-black/50">
-              Four simple steps and you're all set. No stress, no tech skills,
+              Four simple steps and you&apos;re all set. No stress, no tech skills,
               no hassle.
             </p>
           </div>
@@ -400,17 +373,23 @@ export default function Home() {
             </h2>
           </div>
 
+          {packages.length === 0 && (
+            <p className="mt-14 text-center text-black/50">
+              Packages are being updated. Please check back shortly.
+            </p>
+          )}
+
           <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
             {packages.map((item) => (
               <div
-                key={item.name}
+                key={item.id}
                 className={`relative rounded-2xl border p-7 ${
-                  item.popular
+                  item.is_popular
                     ? "border-[#ed1c24] bg-[#ed1c24] text-white shadow-xl"
                     : "border-black/10 bg-white"
                 }`}
               >
-                {item.popular && (
+                {item.is_popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-black px-4 py-1 text-[10px] font-bold uppercase text-white">
                     Best Popular
                   </div>
@@ -418,22 +397,22 @@ export default function Home() {
 
                 <p
                   className={`text-xs font-bold ${
-                    item.popular ? "text-white/70" : "text-black/40"
+                    item.is_popular ? "text-white/70" : "text-black/40"
                   }`}
                 >
-                  {item.name}
+                  {item.name.toUpperCase()}
                 </p>
 
                 <h3 className="mt-3 text-3xl font-black">
-                  {item.price}
+                  {formatPrice(item.price, item.currency)}
                 </h3>
 
                 <div className="mt-7 space-y-3">
-                  {item.details.map((detail) => (
+                  {item.deliverables.map((detail) => (
                     <p
                       key={detail}
                       className={`text-sm ${
-                        item.popular ? "text-white/80" : "text-black/60"
+                        item.is_popular ? "text-white/80" : "text-black/60"
                       }`}
                     >
                       {detail}
@@ -441,16 +420,16 @@ export default function Home() {
                   ))}
                 </div>
 
-                <a
-                  href="#"
+                <Link
+                  href={`/checkout/${item.slug}`}
                   className={`mt-8 block rounded-lg px-5 py-3 text-center text-sm font-bold ${
-                    item.popular
+                    item.is_popular
                       ? "bg-white text-black"
                       : "bg-[#111827] text-white"
                   }`}
                 >
                   Buy Package
-                </a>
+                </Link>
               </div>
             ))}
           </div>
@@ -656,6 +635,9 @@ export default function Home() {
         </div>
       </footer>
 
+      {assistant?.enabled && (
+        <AssistantWidget name={assistant.assistantName} welcome={assistant.welcomeMessage} />
+      )}
     </main>
   );
 }

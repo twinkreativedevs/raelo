@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
+import { signBrandAssetUrl } from "@/lib/brand-assets";
 
 export default async function OnboardingPage() {
   const supabase = await createClient();
@@ -18,10 +19,12 @@ export default async function OnboardingPage() {
     .eq("user_id", user.sub as string)
     .maybeSingle();
 
-  // Already done this before — send them straight to their dashboard.
+  // Already done this before: edits happen on the portal's Brand page.
   if (existing?.completed) {
-    redirect("/protected");
+    redirect("/portal/brand");
   }
+
+  const logoUrl = await signBrandAssetUrl(supabase, existing?.logo_path);
 
   return (
     <main className="min-h-screen bg-white text-black">
@@ -37,7 +40,11 @@ export default async function OnboardingPage() {
         </p>
 
         <div className="mt-10">
-          <OnboardingWizard initialData={existing ?? null} />
+          <OnboardingWizard
+            userId={user.sub as string}
+            initialData={existing ?? null}
+            logoUrl={logoUrl}
+          />
         </div>
       </div>
     </main>

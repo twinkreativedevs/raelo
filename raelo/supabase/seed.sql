@@ -1,22 +1,23 @@
 -- seed.sql
--- Seeds the packages table with the values currently hardcoded on the
--- landing page (app/page.tsx). Safe to re-run: upserts on slug.
+-- Seeds the packages shown on the landing page (app/page.tsx). Safe to
+-- re-run: upserts on slug. Keep this and the landing page copy in sync
+-- until the landing page reads packages from the database.
 --
--- `deliverables` is a starting-point JSONB shape (frontend can render it
--- as a bullet list on the package/checkout page) -- adjust the actual
--- copy to match what you want to promise clients before going live.
+-- `deliverables` is rendered as a bullet list on the checkout page.
 
-insert into public.packages (name, slug, description, price, currency, billing_period, deliverables, active)
+insert into public.packages (name, slug, description, price, currency, billing_period, deliverables, active, sort_order, is_popular)
 values
   (
     'Starter',
     'starter',
-    'Entry-level social content package.',
+    'For brands getting started with consistent posting.',
     45000,
     'NGN',
     'monthly',
-    '["4 posts per month", "1 platform", "Monthly content calendar"]'::jsonb,
-    true
+    '["1 brand (1 platform)", "12 posts per month", "Basic engagement support"]'::jsonb,
+    true,
+    1,
+    false
   ),
   (
     'Growth',
@@ -25,7 +26,9 @@ values
     85000,
     'NGN',
     'monthly',
-    '["8 posts per month", "2 platforms", "Monthly content calendar", "Basic performance summary"]'::jsonb,
+    '["1 brand (2 platforms)", "24 posts per month", "Advanced engagement support"]'::jsonb,
+    true,
+    2,
     true
   ),
   (
@@ -35,18 +38,22 @@ values
     145000,
     'NGN',
     'monthly',
-    '["16 posts per month", "3 platforms", "Content calendar + strategy call", "Monthly performance report"]'::jsonb,
-    true
+    '["1 brand (3 platforms)", "40 posts per month", "Premium engagement support"]'::jsonb,
+    true,
+    3,
+    false
   ),
   (
-    'Agency',
-    'agency',
-    'Highest-volume package for agencies and larger teams.',
+    'Business',
+    'business',
+    'For agencies and businesses running several brands.',
     320000,
     'NGN',
     'monthly',
-    '["Unlimited posts", "All platforms", "Dedicated content lead", "Weekly reporting"]'::jsonb,
-    true
+    '["Multiple brands (up to 5)", "Custom post volume", "Dedicated account manager"]'::jsonb,
+    true,
+    4,
+    false
   )
 on conflict (slug) do update set
   name = excluded.name,
@@ -55,4 +62,10 @@ on conflict (slug) do update set
   currency = excluded.currency,
   billing_period = excluded.billing_period,
   deliverables = excluded.deliverables,
-  active = excluded.active;
+  active = excluded.active,
+  sort_order = excluded.sort_order,
+  is_popular = excluded.is_popular;
+
+-- The top tier used to be seeded as 'agency'. Retire it rather than delete
+-- it, in case a subscription already references it.
+update public.packages set active = false where slug = 'agency';
