@@ -10,6 +10,11 @@ import { createHmac, timingSafeEqual } from "crypto";
 // PAYSTACK_API_URL is only for tests/proxies.
 const PAYSTACK_BASE_URL = process.env.PAYSTACK_API_URL ?? "https://api.paystack.co";
 
+/** True once PAYSTACK_SECRET_KEY is set. Until then checkout is switched off. */
+export function paystackConfigured() {
+  return Boolean(process.env.PAYSTACK_SECRET_KEY);
+}
+
 function getSecretKey() {
   const key = process.env.PAYSTACK_SECRET_KEY;
   if (!key) {
@@ -162,7 +167,7 @@ export function isValidWebhookSignature(
   rawBody: string,
   signature: string | null,
 ): boolean {
-  if (!signature) return false;
+  if (!signature || !paystackConfigured()) return false;
 
   const expected = createHmac("sha512", getSecretKey())
     .update(rawBody)

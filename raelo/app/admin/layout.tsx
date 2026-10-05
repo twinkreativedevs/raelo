@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { requireStaff } from "@/lib/auth";
-import type { TeamRole } from "@/lib/supabase/database.types";
+import type { TeamRole } from "@/lib/db/types";
 import { AdminNav } from "@/components/admin/admin-nav";
 import { LogoutButton } from "@/components/logout-button";
 

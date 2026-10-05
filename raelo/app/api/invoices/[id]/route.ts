@@ -1,49 +1,48 @@
+import { eq } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { currentUser } from "@/lib/auth";
+import { schema } from "@/lib/db";
+import type { Invoice } from "@/lib/db/types";
+import { isUuid } from "@/lib/format";
 import { renderInvoicePdf } from "@/lib/invoice-pdf";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-import type { Invoice } from "@/lib/supabase/database.types";
+import { getSettingValue } from "@/lib/settings";
 
-// Downloads an invoice as PDF. Uses the signed-in user's client, so RLS
-// decides access: clients get their own invoices, admins get all.
+// Downloads an invoice as PDF. Runs as the signed-in user, so RLS decides
+// access: clients get their own invoices, admins get all.
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const supabase = await createClient();
-
-  const { data: claims } = await supabase.auth.getClaims();
-  if (!claims?.claims) {
+  const auth = await currentUser();
+  if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: invoice } = await supabase
-    .from("invoices")
-    .select("*, orders(order_number)")
-    .eq("id", id)
-    .maybeSingle();
+  const invoice = isUuid(id)
+    ? await auth.asUser((tx) =>
+        tx.query.invoices.findFirst({
+          where: eq(schema.invoices.id, id),
+          with: { order: { columns: { order_number: true } } },
+        }),
+      )
+    : undefined;
 
   if (!invoice) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Access to the invoice is settled above; settings are read with the
-  // service role so every invoice gets the configured footer.
-  const admin = createAdminClient();
-  const [{ data: brandRow }, { data: emailRow }] = await Promise.all([
-    admin.from("settings").select("value").eq("key", "brand").maybeSingle(),
-    admin.from("settings").select("value").eq("key", "email").maybeSingle(),
+  // Access to the invoice is settled above; settings are read server-side
+  // so every invoice gets the configured footer.
+  const [brand, email] = await Promise.all([
+    getSettingValue<Record<string, string>>("brand"),
+    getSettingValue<Record<string, string>>("email"),
   ]);
-  const brand = (brandRow?.value ?? {}) as Record<string, string>;
-  const email = (emailRow?.value ?? {}) as Record<string, string>;
-
-  const order = invoice.orders as unknown as { order_number: string } | null;
 
   const pdf = await renderInvoicePdf(
-    { ...(invoice as Invoice), order_number: order?.order_number ?? null },
+    { ...(invoice as unknown as Invoice), order_number: invoice.order?.order_number ?? null },
     {
       siteName: brand.site_name || "Raelo",
       tagline: brand.tagline,

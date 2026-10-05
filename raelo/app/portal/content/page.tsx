@@ -1,40 +1,45 @@
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 
 import { requireProfile } from "@/lib/auth";
 import { signPreviewUrls, isImage } from "@/lib/content";
+import { schema } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { PageHeader } from "@/components/portal/page-header";
 
 export const metadata: Metadata = { title: "Your content" };
 
 export default async function ContentPage() {
-  const { supabase, profile } = await requireProfile("/portal/content");
+  const { asUser, profile } = await requireProfile("/portal/content");
 
   // RLS returns only published batches of the client's own subscriptions.
   // Filter explicitly too, so staff viewing their own portal see the same.
-  const { data: subs } = await supabase
-    .from("subscriptions")
-    .select("id")
-    .eq("user_id", profile.id);
-  const subscriptionIds = (subs ?? []).map((s) => s.id);
-
-  const { data: batches } = subscriptionIds.length
-    ? await supabase
-        .from("content_batches")
-        .select(
-          "id, title, period_start, published_at, client_message, content_items(id, storage_path, mime_type, sort_order)",
-        )
-        .eq("status", "published")
-        .in("subscription_id", subscriptionIds)
-        .order("published_at", { ascending: false })
-    : { data: [] };
+  const batches = await asUser(async (tx) => {
+    const subs = await tx
+      .select({ id: schema.subscriptions.id })
+      .from(schema.subscriptions)
+      .where(eq(schema.subscriptions.user_id, profile.id));
+    if (!subs.length) return [];
+    return tx.query.content_batches.findMany({
+      where: and(
+        eq(schema.content_batches.status, "published"),
+        inArray(schema.content_batches.subscription_id, subs.map((s) => s.id)),
+      ),
+      orderBy: [desc(schema.content_batches.published_at)],
+      columns: { id: true, title: true, period_start: true, published_at: true, client_message: true },
+      with: {
+        content_items: {
+          columns: { id: true, storage_path: true, mime_type: true, sort_order: true },
+          orderBy: [asc(schema.content_items.sort_order)],
+        },
+      },
+    });
+  });
 
   // First image of each batch as its cover.
-  const covers = (batches ?? []).flatMap((batch) => {
-    const items = [...(batch.content_items ?? [])].sort(
-      (a, b) => a.sort_order - b.sort_order,
-    );
+  const covers = batches.flatMap((batch) => {
+    const items = batch.content_items;
     const cover = items.find((item) => item.storage_path && isImage(item));
     return cover ? [{ ...cover, batchId: batch.id }] : [];
   });

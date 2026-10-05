@@ -2,7 +2,9 @@ import { createHash } from "crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { buildSystemPrompt, getAssistantConfig, streamGroqReply, type ChatMessage } from "@/lib/assistant";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { sql } from "drizzle-orm";
+
+import { db } from "@/lib/db";
 
 // Public chat endpoint for the landing-page assistant. Limits: 20 messages
 // per visitor per 10 minutes and 600 per hour site-wide, so a script can't
@@ -40,12 +42,17 @@ export async function POST(request: NextRequest) {
   const messages = parseMessages(await request.json().catch(() => null));
   if (!messages) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
 
-  const admin = createAdminClient();
-  const [visitor, global] = await Promise.all([
-    admin.rpc("hit_rate_limit", { limit_key: `assistant:${visitorKey(request)}`, max_hits: 20, window_seconds: 600 }),
-    admin.rpc("hit_rate_limit", { limit_key: "assistant:global", max_hits: 600, window_seconds: 3600 }),
+  const hit = async (key: string, max: number, windowSeconds: number) => {
+    const { rows } = await db.execute<{ allowed: boolean }>(
+      sql`select public.hit_rate_limit(${key}, ${max}, ${windowSeconds}) as allowed`,
+    );
+    return rows[0]?.allowed !== false;
+  };
+  const [visitorOk, globalOk] = await Promise.all([
+    hit(`assistant:${visitorKey(request)}`, 20, 600),
+    hit("assistant:global", 600, 3600),
   ]);
-  if (visitor.data === false || global.data === false) {
+  if (!visitorOk || !globalOk) {
     return NextResponse.json({ error: "You're sending messages quickly — please try again in a few minutes." }, { status: 429 });
   }
 

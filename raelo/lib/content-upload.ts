@@ -1,5 +1,5 @@
-// Client-safe upload limits for the content bucket. Must match migration
-// 0015, which enforces them server-side.
+// Upload limits for content files. The browser checks them for quick
+// feedback; app/api/uploads/route.ts enforces them in the upload token.
 export const CONTENT_MAX_BYTES = 50 * 1024 * 1024;
 
 export const CONTENT_MIME_TYPES = [

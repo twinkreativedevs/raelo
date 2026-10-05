@@ -34,6 +34,18 @@ export const TEMPLATES = {
     sms: `${c.siteName}: payment received for ${c.packageName}. Complete your brand brief so we can start: ${c.site}/onboarding`,
   }),
 
+  subscription_granted: (c: TemplateContext & { packageName: string; expiresAt: string | null }): Rendered => ({
+    subject: `Welcome to ${c.siteName} — let's set up your brand`,
+    heading: "Your plan is ready",
+    paragraphs: [
+      hi(c.name),
+      `We've set you up on ${c.packageName}, free of charge until ${formatDate(c.expiresAt)}.`,
+      "Next step: tell us about your brand so we can start creating. It takes about 5 minutes.",
+    ],
+    cta: { label: "Complete your brand brief", url: `${c.site}/onboarding` },
+    sms: `${c.siteName}: your ${c.packageName} plan is ready. Complete your brand brief so we can start: ${c.site}/onboarding`,
+  }),
+
   admin_new_order: (c: TemplateContext & { clientName: string; packageName: string; amount: number; orderNumber: string; kind: string }): Rendered => ({
     subject: `New ${c.kind === "renewal" ? "renewal" : "order"}: ${c.clientName} · ${c.packageName}`,
     heading: c.kind === "renewal" ? "Subscription renewed" : "New order",
@@ -127,6 +139,31 @@ export const TEMPLATES = {
     paragraphs: [hi(c.name), `Someone you referred just subscribed (order ${c.orderNumber}). You earned ${formatMoney(c.amount, "NGN")}.`],
     cta: { label: "View your earnings", url: `${c.site}/affiliate` },
     sms: `${c.siteName}: you earned a ${formatMoney(c.amount, "NGN")} commission from a referral.`,
+  }),
+
+  // Account emails (sign-in system). Always email-only; no SMS is sent.
+  verify_email: (c: TemplateContext & { url: string }): Rendered => ({
+    subject: `Confirm your email for ${c.siteName}`,
+    heading: "Confirm your email",
+    paragraphs: [hi(c.name), "Tap the button below to confirm your email address and finish creating your account.", "If you didn't sign up, you can ignore this email."],
+    cta: { label: "Confirm email", url: c.url },
+    sms: "",
+  }),
+
+  reset_password: (c: TemplateContext & { url: string }): Rendered => ({
+    subject: `Reset your ${c.siteName} password`,
+    heading: "Reset your password",
+    paragraphs: [hi(c.name), "Someone (hopefully you) asked to reset your password. The link below works for one hour.", "If you didn't ask for this, you can ignore this email."],
+    cta: { label: "Choose a new password", url: c.url },
+    sms: "",
+  }),
+
+  team_invite: (c: TemplateContext & { url: string; role: string }): Rendered => ({
+    subject: `You've been invited to the ${c.siteName} team`,
+    heading: "Join the team",
+    paragraphs: [hi(c.name), `You've been added to ${c.siteName} as ${c.role}. Choose a password to sign in. The link works for 24 hours.`],
+    cta: { label: "Set your password", url: c.url },
+    sms: "",
   }),
 
   payout_recorded: (c: TemplateContext & { amount: number; reference?: string | null }): Rendered => ({

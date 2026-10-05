@@ -1,24 +1,21 @@
 "use server";
 
-import { headers } from "next/headers";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { logActivity } from "@/lib/activity";
 import { authorize } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createInvitedUser, passwordSetupLink } from "@/lib/better-auth";
+import { db, schema } from "@/lib/db";
+import { afterResponse, sendAccountEmail } from "@/lib/notifications";
 
 const TEAM_ROLES = ["admin", "account_manager", "designer"] as const;
 type TeamRole = (typeof TEAM_ROLES)[number];
 
-async function siteUrl() {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured) return configured.replace(/\/$/, "");
-  return (await headers()).get("origin") ?? "";
-}
-
 /**
- * Adds a team member. New emails get a Supabase invite link that lands on
- * "set your password"; an existing account (e.g. a client) is promoted.
+ * Adds a team member. New emails get an account and an invite link that
+ * lands on "set your password"; an existing account (e.g. a client) is
+ * promoted.
  */
 export async function inviteTeamMember(formData: FormData) {
   const auth = await authorize(["admin"]);
@@ -31,31 +28,42 @@ export async function inviteTeamMember(formData: FormData) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email." };
   if (!TEAM_ROLES.includes(role)) return { error: "Pick a role." };
 
-  // Service role: needed for auth admin APIs and to set `role` (the profile
-  // guard trigger only lets admins/service role change it).
-  const admin = createAdminClient();
-
-  const { data: existing } = await admin.from("profiles").select("id, role").eq("email", email).maybeSingle();
+  // Owner connection: setting `role` is only allowed for admins / server
+  // code (profile guard trigger), and the admin was authorised above.
+  const [existing] = await db
+    .select({ id: schema.profiles.id, full_name: schema.profiles.full_name })
+    .from(schema.profiles)
+    .where(sql`lower(${schema.profiles.email}) = ${email}`);
 
   let userId = existing?.id;
   if (!userId) {
-    const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-      data: { full_name: fullName },
-      redirectTo: `${await siteUrl()}/auth/confirm?next=/auth/update-password`,
-    });
-    if (error || !data.user) return { error: error?.message ?? "Couldn't send the invite." };
-    userId = data.user.id;
+    try {
+      userId = await createInvitedUser(email, fullName);
+    } catch (error) {
+      console.error("createInvitedUser failed", error);
+      return { error: "Couldn't create the account. Is this email already registered?" };
+    }
   }
 
-  const { error: roleError } = await admin
-    .from("profiles")
-    .update({ role, is_active: true, ...(fullName && !existing ? { full_name: fullName } : {}) })
-    .eq("id", userId);
-  if (roleError) return { error: "Invite sent, but setting the role failed. Try again." };
+  await db
+    .update(schema.profiles)
+    .set({ role, is_active: true, ...(fullName && !existing ? { full_name: fullName } : {}) })
+    .where(eq(schema.profiles.id, userId));
+
+  let message = `${email} already had an account and is now a ${role.replace("_", " ")}.`;
+  if (!existing) {
+    const url = await passwordSetupLink(userId, 24);
+    await afterResponse(() =>
+      sendAccountEmail("team_invite", { email, name: fullName, userId }, { url, role: role.replace("_", " ") }),
+    );
+    message = process.env.RESEND_API_KEY
+      ? `Invite sent to ${email}.`
+      : `Account created. Email isn't connected yet, so send ${email} this link to set their password (valid 24 hours): ${url}`;
+  }
 
   await logActivity(userId, existing ? "team_member_promoted" : "team_member_invited", { role, by: auth.profile.id });
   revalidatePath("/admin/team");
-  return { ok: true as const, message: existing ? `${email} already had an account and is now a ${role.replace("_", " ")}.` : `Invite sent to ${email}.` };
+  return { ok: true as const, message };
 }
 
 export async function updateTeamMember(profileId: string, change: { role?: string; is_active?: boolean }) {
@@ -69,14 +77,23 @@ export async function updateTeamMember(profileId: string, change: { role?: strin
     patch.role = change.role;
   }
   if (change.is_active !== undefined) patch.is_active = Boolean(change.is_active);
+  if (!Object.keys(patch).length) return { error: "Nothing to change." };
 
-  const { data, error } = await auth.supabase.from("profiles").update(patch).eq("id", profileId).select("id").maybeSingle();
-  if (error || !data) return { error: "Couldn't update this team member." };
-
-  // Removing someone from the team also drops their client assignments.
-  if (patch.role === "client" || patch.is_active === false) {
-    await auth.supabase.from("subscription_assignments").delete().eq("profile_id", profileId);
-  }
+  const updated = await auth.asUser(async (tx) => {
+    const rows = await tx
+      .update(schema.profiles)
+      .set(patch)
+      .where(eq(schema.profiles.id, profileId))
+      .returning({ id: schema.profiles.id });
+    // Removing someone from the team also drops their client assignments.
+    if (rows.length && (patch.role === "client" || patch.is_active === false)) {
+      await tx
+        .delete(schema.subscription_assignments)
+        .where(and(eq(schema.subscription_assignments.profile_id, profileId)));
+    }
+    return rows.length > 0;
+  });
+  if (!updated) return { error: "Couldn't update this team member." };
 
   await logActivity(profileId, "team_member_updated", { ...patch, by: auth.profile.id });
   revalidatePath("/admin/team");

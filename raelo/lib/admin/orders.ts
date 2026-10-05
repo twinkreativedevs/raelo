@@ -1,9 +1,11 @@
 import "server-only";
 
-import { ilikePattern } from "@/lib/admin/search";
-import type { createClient } from "@/lib/supabase/server";
+import { and, count, desc, eq, gte, ilike, lte, or, type SQL } from "drizzle-orm";
 
-type Client = Awaited<ReturnType<typeof createClient>>;
+import { ilikePattern } from "@/lib/admin/search";
+import { schema, type Tx } from "@/lib/db";
+
+const { orders } = schema;
 
 export interface OrderFilters {
   status?: string;
@@ -28,19 +30,58 @@ export function parseOrderFilters(params: Record<string, string | undefined>): O
   };
 }
 
-export const ORDER_SELECT =
-  "id, order_number, status, kind, subtotal, discount_amount, amount, currency, payment_reference, payment_channel, paid_at, created_at, user_id, referral_code, profiles(full_name, email, company_name), packages(name), invoices(id, invoice_number, status)";
-
-/** Orders query with filters applied; the caller adds range/order. */
-export function ordersQuery(supabase: Client, filters: OrderFilters) {
-  let query = supabase.from("orders").select(ORDER_SELECT, { count: "exact" });
-  if (filters.status) query = query.eq("status", filters.status);
-  if (filters.kind) query = query.eq("kind", filters.kind);
-  if (filters.from) query = query.gte("created_at", `${filters.from}T00:00:00Z`);
-  if (filters.to) query = query.lte("created_at", `${filters.to}T23:59:59.999Z`);
+function orderWhere(filters: OrderFilters): SQL | undefined {
   const term = ilikePattern(filters.q);
-  if (term) query = query.or(`order_number.ilike.${term},payment_reference.ilike.${term}`);
-  return query;
+  return and(
+    filters.status ? eq(orders.status, filters.status) : undefined,
+    filters.kind ? eq(orders.kind, filters.kind) : undefined,
+    filters.from ? gte(orders.created_at, `${filters.from}T00:00:00Z`) : undefined,
+    filters.to ? lte(orders.created_at, `${filters.to}T23:59:59.999Z`) : undefined,
+    term ? or(ilike(orders.order_number, term), ilike(orders.payment_reference, term)) : undefined,
+  );
+}
+
+/**
+ * Filtered orders, newest first, with client, package and invoice.
+ * Run inside `asUser` so RLS applies (admins see all orders).
+ */
+export async function listOrders(
+  tx: Tx,
+  filters: OrderFilters,
+  page: { limit: number; offset: number },
+) {
+  const where = orderWhere(filters);
+  const [rows, [total]] = await Promise.all([
+    tx.query.orders.findMany({
+      where,
+      orderBy: [desc(orders.created_at)],
+      limit: page.limit,
+      offset: page.offset,
+      columns: {
+        id: true,
+        order_number: true,
+        status: true,
+        kind: true,
+        subtotal: true,
+        discount_amount: true,
+        amount: true,
+        currency: true,
+        payment_reference: true,
+        payment_channel: true,
+        paid_at: true,
+        created_at: true,
+        user_id: true,
+        referral_code: true,
+      },
+      with: {
+        profile: { columns: { full_name: true, email: true, company_name: true } },
+        package: { columns: { name: true } },
+        invoices: { columns: { id: true, invoice_number: true, status: true } },
+      },
+    }),
+    tx.select({ n: count() }).from(orders).where(where),
+  ]);
+  return { rows, count: total?.n ?? 0 };
 }
 
 /** RFC 4180 CSV, with a guard against spreadsheet formula injection. */

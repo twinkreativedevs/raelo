@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { requireStaff } from "@/lib/auth";
+import { schema } from "@/lib/db";
 import { NOTIFICATION_EVENTS } from "@/lib/settings-schema";
 import { cn } from "@/lib/utils";
 import { SettingsForm } from "@/components/admin/settings-form";
@@ -34,12 +35,14 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 const text = (v: Values, k: string) => (typeof v[k] === "string" || typeof v[k] === "number" ? String(v[k]) : "");
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  const { supabase } = await requireStaff("/admin/settings", ["admin"]);
+  const { asUser } = await requireStaff("/admin/settings", ["admin"]);
   const requested = (await searchParams).tab;
   const tab = TABS.find((t) => t.key === requested)?.key ?? "brand";
 
-  const { data: rows } = await supabase.from("settings").select("key, value, updated_at");
-  const values = (key: string) => (rows?.find((r) => r.key === key)?.value ?? {}) as Values;
+  const rows = await asUser((tx) =>
+    tx.select({ key: schema.settings.key, value: schema.settings.value, updated_at: schema.settings.updated_at }).from(schema.settings),
+  );
+  const values = (key: string) => (rows.find((r) => r.key === key)?.value ?? {}) as Values;
   const v = values(tab);
 
   const secret = process.env.PAYSTACK_SECRET_KEY ?? "";

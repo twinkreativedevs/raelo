@@ -1,5 +1,5 @@
 import type { BrandBriefInput } from "@/lib/brand-brief";
-import type { OnboardingResponse } from "@/lib/supabase/database.types";
+import type { OnboardingResponse } from "@/lib/db/types";
 
 /** Turns a stored brief row into form state for the brief editors. */
 export function briefFormState(existing: OnboardingResponse | null): BrandBriefInput {

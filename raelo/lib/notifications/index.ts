@@ -2,7 +2,9 @@ import "server-only";
 
 import { after } from "next/server";
 
-import { createAdminClient } from "@/lib/supabase/admin";
+import { and, count, eq, gte, inArray } from "drizzle-orm";
+
+import { db, schema } from "@/lib/db";
 import { sendEmail, sendSms } from "./providers";
 import { TEMPLATES, toEmailHtml, toEmailText, type TemplateName } from "./templates";
 
@@ -25,7 +27,8 @@ export type NotificationEvent =
   | "affiliate_applied"
   | "affiliate_approved"
   | "commission_earned"
-  | "payout_recorded";
+  | "payout_recorded"
+  | "account_email";
 
 interface Recipient {
   userId?: string | null;
@@ -52,11 +55,11 @@ interface Config {
 }
 
 async function loadConfig(): Promise<Config> {
-  const { data } = await createAdminClient()
-    .from("settings")
-    .select("key, value")
-    .in("key", ["notifications", "email", "sms", "brand", "admin_notifications"]);
-  const get = (key: string) => (data?.find((row) => row.key === key)?.value ?? {}) as Record<string, unknown>;
+  const data = await db
+    .select({ key: schema.settings.key, value: schema.settings.value })
+    .from(schema.settings)
+    .where(inArray(schema.settings.key, ["notifications", "email", "sms", "brand", "admin_notifications"]));
+  const get = (key: string) => (data.find((row) => row.key === key)?.value ?? {}) as Record<string, unknown>;
 
   const brand = get("brand");
   const email = get("email");
@@ -79,13 +82,17 @@ async function loadConfig(): Promise<Config> {
 
 async function alreadySent(dedupeKey: string, withinHours: number) {
   const since = new Date(Date.now() - withinHours * 3600_000).toISOString();
-  const { count } = await createAdminClient()
-    .from("notification_log")
-    .select("id", { count: "exact", head: true })
-    .eq("dedupe_key", dedupeKey)
-    .eq("status", "sent")
-    .gte("created_at", since);
-  return (count ?? 0) > 0;
+  const [row] = await db
+    .select({ n: count() })
+    .from(schema.notification_log)
+    .where(
+      and(
+        eq(schema.notification_log.dedupe_key, dedupeKey),
+        eq(schema.notification_log.status, "sent"),
+        gte(schema.notification_log.created_at, since),
+      ),
+    );
+  return (row?.n ?? 0) > 0;
 }
 
 async function deliver(opts: {
@@ -98,7 +105,7 @@ async function deliver(opts: {
   dedupeKey?: string;
 }) {
   const { config } = opts;
-  const log: Record<string, unknown>[] = [];
+  const log: (typeof schema.notification_log.$inferInsert)[] = [];
   const render = TEMPLATES[opts.template] as (c: Record<string, unknown>) => ReturnType<(typeof TEMPLATES)["onboarding_reminder"]>;
 
   for (const recipient of opts.recipients) {
@@ -126,8 +133,10 @@ async function deliver(opts: {
   }
 
   if (log.length) {
-    const { error } = await createAdminClient().from("notification_log").insert(log);
-    if (error) console.error("notification_log insert failed", error.message);
+    await db
+      .insert(schema.notification_log)
+      .values(log)
+      .catch((error) => console.error("notification_log insert failed", error));
   }
 }
 
@@ -149,11 +158,15 @@ export async function notifyUser(
     if (!channels.email && !channels.sms) return;
     if (opts.dedupeKey && (await alreadySent(opts.dedupeKey, opts.dedupeHours ?? 72))) return;
 
-    const { data: profile } = await createAdminClient()
-      .from("profiles")
-      .select("id, full_name, email, phone")
-      .eq("id", userId)
-      .maybeSingle();
+    const [profile] = await db
+      .select({
+        id: schema.profiles.id,
+        full_name: schema.profiles.full_name,
+        email: schema.profiles.email,
+        phone: schema.profiles.phone,
+      })
+      .from(schema.profiles)
+      .where(eq(schema.profiles.id, userId));
     if (!profile) return;
 
     await deliver({
@@ -202,21 +215,49 @@ export async function notifyStaff(
     const config = await loadConfig();
     const channels = { email: channelsFor(config, event).email, sms: false };
     if (!channels.email) return;
-    const { data: staff } = await createAdminClient()
-      .from("profiles")
-      .select("id, full_name, email")
-      .in("id", profileIds)
-      .eq("is_active", true);
+    const staff = await db
+      .select({ id: schema.profiles.id, full_name: schema.profiles.full_name, email: schema.profiles.email })
+      .from(schema.profiles)
+      .where(and(inArray(schema.profiles.id, profileIds), eq(schema.profiles.is_active, true)));
     await deliver({
       event,
       template,
       data,
-      recipients: (staff ?? []).map((s) => ({ userId: s.id, name: s.full_name, email: s.email })),
+      recipients: staff.map((s) => ({ userId: s.id, name: s.full_name, email: s.email })),
       channels,
       config,
     });
   } catch (error) {
     console.error("notifyStaff failed", event, error);
+  }
+}
+
+/**
+ * Sign-in system emails (confirm email, password reset, team invite). Sent
+ * regardless of the notification toggles, logged without the link (it's a
+ * secret). Without RESEND_API_KEY the link is printed to the server console
+ * in development so you can still sign up and reset passwords locally.
+ */
+export async function sendAccountEmail(
+  template: "verify_email" | "reset_password" | "team_invite",
+  to: { email: string; name?: string | null; userId?: string | null },
+  data: { url: string; role?: string },
+) {
+  try {
+    const config = await loadConfig();
+    if (!process.env.RESEND_API_KEY && process.env.NODE_ENV !== "production") {
+      console.info(`[${template}] email to ${to.email} (RESEND_API_KEY not set). Link: ${data.url}`);
+    }
+    await deliver({
+      event: "account_email",
+      template,
+      data,
+      recipients: [{ userId: to.userId ?? null, name: to.name, email: to.email }],
+      channels: { email: true, sms: false },
+      config,
+    });
+  } catch (error) {
+    console.error("sendAccountEmail failed", template, error);
   }
 }
 

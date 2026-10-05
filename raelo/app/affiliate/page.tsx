@@ -3,8 +3,11 @@ import Link from "next/link";
 
 import { affiliateSettings } from "@/lib/affiliates";
 import { formatDate, formatMoney } from "@/lib/format";
-import { createClient } from "@/lib/supabase/server";
-import type { Affiliate, AffiliateBalance } from "@/lib/supabase/database.types";
+import { desc, eq } from "drizzle-orm";
+
+import { currentUser } from "@/lib/auth";
+import { schema, type Tx } from "@/lib/db";
+import type { Affiliate, AffiliateBalance } from "@/lib/db/types";
 import { Logo } from "@/components/brand/logo";
 import { ApplyForm, PayoutForm } from "@/components/affiliate/forms";
 import { CopyLink } from "@/components/affiliate/copy-link";
@@ -19,18 +22,18 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 }
 
 export default async function AffiliatePage() {
-  const supabase = await createClient();
-  const { data: claims } = await supabase.auth.getClaims();
-  const userId = claims?.claims?.sub as string | undefined;
+  const auth = await currentUser();
+  const userId = auth?.profile.id;
   const rules = await affiliateSettings();
 
-  const { data: affiliate } = userId
-    ? await supabase.from("affiliates").select("*").eq("user_id", userId).maybeSingle<Affiliate>()
-    : { data: null };
+  const affiliate = auth
+    ? (((await auth.asUser((tx) => tx.select().from(schema.affiliates).where(eq(schema.affiliates.user_id, auth.profile.id))))[0] as
+        | Affiliate
+        | undefined) ?? null)
+    : null;
+  const dashboard = auth && affiliate?.status === "approved" ? await auth.asUser((tx) => loadDashboard(tx, affiliate.id)) : null;
 
-  const { data: profile } = userId
-    ? await supabase.from("profiles").select("full_name").eq("id", userId).maybeSingle()
-    : { data: null };
+  const profile = auth ? { full_name: auth.profile.full_name } : null;
 
   const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
 
@@ -90,20 +93,43 @@ export default async function AffiliatePage() {
           <Card><h2 className="font-bold">Your affiliate account is paused</h2><p className="mt-2 text-sm text-black/60">Your link isn&apos;t earning right now. Contact us for details.</p></Card>
         )}
 
-        {affiliate?.status === "approved" && <AffiliateDashboard affiliate={affiliate} site={site} unlockThreshold={rules.unlockThreshold} />}
+        {affiliate?.status === "approved" && dashboard && (
+          <AffiliateDashboard affiliate={affiliate} site={site} unlockThreshold={rules.unlockThreshold} {...dashboard} />
+        )}
       </main>
     </div>
   );
 }
 
-async function AffiliateDashboard({ affiliate, site, unlockThreshold }: { affiliate: Affiliate; site: string; unlockThreshold: number }) {
-  const supabase = await createClient();
-  const [{ data: balance }, { data: commissions }, { data: payouts }] = await Promise.all([
-    supabase.from("affiliate_balances").select("*").eq("affiliate_id", affiliate.id).maybeSingle<AffiliateBalance>(),
-    supabase.from("commissions").select("id, amount, status, created_at, orders(order_number)").eq("affiliate_id", affiliate.id).order("created_at", { ascending: false }).limit(50),
-    supabase.from("payouts").select("id, amount, reference, paid_at").eq("affiliate_id", affiliate.id).order("paid_at", { ascending: false }),
+/** Balance, recent commissions and payouts for an affiliate (RLS: their own). */
+async function loadDashboard(tx: Tx, affiliateId: string) {
+  const { affiliate_balances, commissions: c, payouts: p } = schema;
+  const [[balance], commissions, payouts] = await Promise.all([
+    tx.select().from(affiliate_balances).where(eq(affiliate_balances.affiliate_id, affiliateId)),
+    tx.query.commissions.findMany({
+      where: eq(c.affiliate_id, affiliateId),
+      orderBy: [desc(c.created_at)],
+      limit: 50,
+      columns: { id: true, amount: true, status: true, created_at: true },
+      with: { order: { columns: { order_number: true } } },
+    }),
+    tx
+      .select({ id: p.id, amount: p.amount, reference: p.reference, paid_at: p.paid_at })
+      .from(p)
+      .where(eq(p.affiliate_id, affiliateId))
+      .orderBy(desc(p.paid_at)),
   ]);
+  return { balance: (balance ?? null) as AffiliateBalance | null, commissions, payouts };
+}
 
+function AffiliateDashboard({
+  affiliate,
+  site,
+  unlockThreshold,
+  balance,
+  commissions,
+  payouts,
+}: { affiliate: Affiliate; site: string; unlockThreshold: number } & Awaited<ReturnType<typeof loadDashboard>>) {
   const sales = Number(balance?.confirmed_sales ?? 0);
   const progress = Math.min(100, Math.round((sales / Math.max(1, unlockThreshold)) * 100));
 
@@ -142,7 +168,7 @@ async function AffiliateDashboard({ affiliate, site, unlockThreshold }: { affili
           <ul className="divide-y divide-black/5 text-sm">
             {commissions.map((c) => (
               <li key={c.id} className="flex justify-between gap-4 py-2">
-                <span>{(c.orders as unknown as { order_number: string } | null)?.order_number}</span>
+                <span>{c.order?.order_number}</span>
                 <span className="capitalize text-black/50">{c.status}</span>
                 <span className="tabular-nums">{formatMoney(Number(c.amount), "NGN")}</span>
                 <span className="text-black/50">{formatDate(c.created_at)}</span>

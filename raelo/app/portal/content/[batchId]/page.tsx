@@ -1,9 +1,12 @@
+import { and, asc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireProfile } from "@/lib/auth";
+import { isUuid } from "@/lib/format";
 import { isImage, isVideo, signPreviewUrls } from "@/lib/content";
+import { schema } from "@/lib/db";
 import { formatBytes, formatDate } from "@/lib/format";
 import { CopyButton } from "@/components/portal/copy-button";
 import { PageHeader } from "@/components/portal/page-header";
@@ -16,29 +19,31 @@ export default async function BatchPage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
-  const { supabase } = await requireProfile(`/portal/content/${batchId}`);
+  const { asUser } = await requireProfile(`/portal/content/${batchId}`);
+  if (!isUuid(batchId)) notFound();
 
   // RLS: a client only gets a row back for their own published batch.
-  const { data: batch } = await supabase
-    .from("content_batches")
-    .select("id, title, status, published_at, client_message")
-    .eq("id", batchId)
-    .eq("status", "published")
-    .maybeSingle();
+  const batch = await asUser((tx) =>
+    tx.query.content_batches.findFirst({
+      where: and(eq(schema.content_batches.id, batchId), eq(schema.content_batches.status, "published")),
+      columns: { id: true, title: true, status: true, published_at: true, client_message: true },
+      with: {
+        content_items: {
+          columns: {
+            id: true, title: true, caption: true, platform: true, content_type: true, storage_path: true,
+            asset_url: true, file_name: true, mime_type: true, file_size_bytes: true, scheduled_for: true, sort_order: true,
+          },
+          orderBy: [asc(schema.content_items.sort_order), asc(schema.content_items.created_at)],
+        },
+      },
+    }),
+  );
 
   if (!batch) notFound();
+  const items = batch.content_items;
 
-  const { data: items } = await supabase
-    .from("content_items")
-    .select(
-      "id, title, caption, platform, content_type, storage_path, asset_url, file_name, mime_type, file_size_bytes, scheduled_for, sort_order",
-    )
-    .eq("batch_id", batch.id)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  const previews = await signPreviewUrls(items ?? []);
-  const hasFiles = (items ?? []).some((item) => item.storage_path);
+  const previews = await signPreviewUrls(items);
+  const hasFiles = items.some((item) => item.storage_path);
 
   return (
     <div className="space-y-8">

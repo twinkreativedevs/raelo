@@ -1,13 +1,16 @@
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 import { Zip, ZipPassThrough } from "fflate";
 
-import { CONTENT_BUCKET, downloadName, safeFileName } from "@/lib/content";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { currentUser } from "@/lib/auth";
+import { downloadName, safeFileName } from "@/lib/content";
+import { schema } from "@/lib/db";
+import { isUuid } from "@/lib/format";
+import { readFile } from "@/lib/storage";
 
-// Streams every file in a batch as one ZIP. Rows are read with the user's
-// client (RLS: clients only see published batches), files are fetched with
-// the service role. Media is already compressed, so files are stored as-is.
+// Streams every file in a batch as one ZIP. Rows are read as the user
+// (RLS: clients only see published batches), files are fetched with the
+// store token. Media is already compressed, so files are stored as-is.
 
 export const maxDuration = 300;
 
@@ -16,36 +19,37 @@ export async function GET(
   { params }: { params: Promise<{ batchId: string }> },
 ) {
   const { batchId } = await params;
-  const supabase = await createClient();
-
-  const { data: claims } = await supabase.auth.getClaims();
-  if (!claims?.claims) {
+  const auth = await currentUser();
+  if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: batch } = await supabase
-    .from("content_batches")
-    .select("id, title")
-    .eq("id", batchId)
-    .maybeSingle();
+  const { content_batches, content_items } = schema;
+  const found = isUuid(batchId)
+    ? await auth.asUser(async (tx) => {
+        const [batch] = await tx
+          .select({ id: content_batches.id, title: content_batches.title })
+          .from(content_batches)
+          .where(eq(content_batches.id, batchId));
+        if (!batch) return null;
+        const items = await tx
+          .select({ id: content_items.id, title: content_items.title, file_name: content_items.file_name, storage_path: content_items.storage_path })
+          .from(content_items)
+          .where(and(eq(content_items.batch_id, batch.id), isNotNull(content_items.storage_path)))
+          .orderBy(asc(content_items.sort_order), asc(content_items.created_at));
+        return { batch, items };
+      })
+    : null;
 
-  if (!batch) {
+  if (!found) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { data: items } = await supabase
-    .from("content_items")
-    .select("id, title, file_name, storage_path")
-    .eq("batch_id", batch.id)
-    .not("storage_path", "is", null)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  if (!items?.length) {
+  const { batch, items } = found;
+  if (!items.length) {
     return NextResponse.json({ error: "No files in this batch" }, { status: 404 });
   }
 
-  const storage = createAdminClient().storage.from(CONTENT_BUCKET);
   const width = String(items.length).length;
 
   const body = new ReadableStream<Uint8Array>({
@@ -61,15 +65,15 @@ export async function GET(
 
       (async () => {
         for (const [index, item] of items.entries()) {
-          const { data, error } = await storage.download(item.storage_path!);
-          if (error || !data) {
+          const data = await readFile(item.storage_path!);
+          if (!data) {
             throw new Error(`Couldn't read ${item.storage_path}`);
           }
           // Numbered so files keep the batch order and names never clash.
           const name = `${String(index + 1).padStart(width, "0")}-${downloadName(item)}`;
           const entry = new ZipPassThrough(name);
           zip.add(entry);
-          entry.push(new Uint8Array(await data.arrayBuffer()), true);
+          entry.push(data, true);
         }
         zip.end();
       })().catch((error) => {

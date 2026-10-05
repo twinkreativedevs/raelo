@@ -1,13 +1,16 @@
 # Raelo — development notes
 
-Raelo is a standalone Next.js 16 + Supabase web app (no WordPress). See
-README.md for setup and docs/LAUNCH.md for going live.
+Raelo is a standalone Next.js 16 web app on Neon Postgres (Drizzle ORM),
+Better Auth and Vercel Blob. No Supabase, no WordPress. See README.md for
+setup and docs/LAUNCH.md for going live.
 
 ## Commands
 
-- `npm run lint` and `npx tsc --noEmit` must pass before committing.
-- `npm run build` must pass (it needs `NEXT_PUBLIC_SUPABASE_URL` and
-  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` set; dummy values work).
+- `npm run lint` and `npm run typecheck` must pass before committing.
+- `npm run build` must pass (no env needed; pages that read the database
+  are dynamic).
+- `npm run db:migrate` applies migrations to `DATABASE_URL`;
+  `npm run db:pull` regenerates `lib/db/schema.ts` + `relations.ts` from it.
 
 ## Conventions
 
@@ -19,16 +22,40 @@ README.md for setup and docs/LAUNCH.md for going live.
 ## Database
 
 - Never edit an existing migration. Add a new numbered file in
-  `supabase/migrations/` and update `lib/supabase/database.types.ts`.
-- Every new table enables RLS and gets explicit policies.
-- Use the helpers in migrations 0007/0009 inside policies: `is_admin()`,
-  `is_staff()`, `current_app_role()`, `owns_subscription(id)`,
-  `is_assigned_to_subscription(id)`, `is_assigned_to_client(id)`.
-- Clients never write money, status or audit data directly. Those writes go
-  through server code with `createAdminClient()` (service role) **after**
-  authenticating the user.
+  `db/migrations/`, run `npm run db:migrate` then `npm run db:pull`, and
+  update `lib/db/types.ts` if it adds statuses/roles. Grant new tables to
+  `raelo_app` (see 0017) if signed-in users need them.
+- Every new table enables RLS and gets explicit policies `to raelo_app`.
+- Use the helpers in migrations 0007/0009 inside policies:
+  `current_user_id()`, `is_admin()`, `is_staff()`, `current_app_role()`,
+  `owns_subscription(id)`, `is_assigned_to_subscription(id)`,
+  `is_assigned_to_client(id)`.
+- Two ways to query (`lib/db`):
+  - `asUser(tx => …)` from `requireProfile` / `requireStaff` / `authorize`
+    (or `withUser(id, …)`): runs as `raelo_app` with RLS. **Default for
+    anything done on behalf of a signed-in user.**
+  - `db`: the owner connection, bypasses RLS (the old "service role"). Only
+    for money/status/audit writes, webhooks, cron, notifications, and reads
+    of server-only tables, **after** authenticating the user.
+- A database refusal (RLS, trigger, constraint) throws: wrap writes and map
+  errors to a friendly message; Postgres error codes are on `error.cause.code`.
+- Postgres rejects malformed uuids, so check route params with `isUuid()`
+  (`lib/format`) and `notFound()` before querying.
+- Clients never write money, status or audit data directly.
 - Profiles: users may only change `full_name`, `company_name`, `phone`,
-  `avatar_url` (enforced by a trigger). Never read `role` from user metadata.
+  `avatar_url` (enforced by a trigger). Profiles are created by a trigger on
+  Better Auth's `user` table; never take `role` from sign-up input.
+
+## Sign-in
+
+- Better Auth (`lib/better-auth.ts`, endpoints at `/api/auth/*`, browser
+  client `lib/auth-client.ts`). Tables `user`, `session`, `account`,
+  `verification` (migration 0000).
+- Email confirmation is required only when `RESEND_API_KEY` is set.
+- Invites and "set your password" use `passwordSetupLink()`; the page is
+  `/auth/update-password?token=…`.
+- Bootstrap: `npm run make-admin -- <email>`. Free plans: Admin → Clients →
+  Give free plan, or `npm run grant-plan`.
 
 ## Payments
 
@@ -47,12 +74,15 @@ README.md for setup and docs/LAUNCH.md for going live.
 - Content is always created in a **draft** batch. Only admins/account
   managers can publish (enforced by trigger). Clients only see published
   batches.
-- Content files live in the private `content` bucket at
-  `{subscription_id}/{batch_id}/{file}`. Clients download via signed URLs
-  created server-side.
-- Brand assets live in the private `brand-assets` bucket at `{user_id}/{file}`.
-  Logos are uploaded straight from the browser (storage RLS limits users to
-  their own folder); `saveLogo` re-checks the path before storing it.
+- Files live in one **private** Vercel Blob store (`lib/storage.ts`):
+  content at `content/{subscription_id}/{batch_id}/{file}`, logos at
+  `brand-assets/{user_id}/{file}`. Browsers upload directly with
+  `upload()` from `@vercel/blob/client`; `app/api/uploads/route.ts` only
+  issues a token for a path the user may write to. The follow-up server
+  action (`registerUploadedItem`, `saveLogo`) re-checks the path and
+  deletes the file if the record can't be saved.
+- Read files only after loading the row with `asUser`, then sign a
+  short-lived URL (`signedReadUrl`, `signPreviewUrls`, `signBrandAssetUrl`).
 - Server actions receive arbitrary JSON: whitelist fields (see
   `sanitizeBrief` in `lib/brand-brief.ts`), never spread input into a row.
 
@@ -60,13 +90,12 @@ README.md for setup and docs/LAUNCH.md for going live.
 
 - Pages call `requireStaff(path, roles)`; every server action calls
   `authorize(roles)` first. Never rely on hidden buttons.
-- Admin queries use the signed-in user's client so RLS still applies; use
-  `createAdminClient()` only for auth admin APIs (invites) and storage signing.
+- Admin queries run through `asUser` so RLS still applies; use `db` only
+  where the notes above allow it.
 - Search input goes through `ilikePattern()` (escapes `%`, `_`, `\`).
-- When a table has two FKs to `profiles` (`subscription_assignments`,
-  `content_batches`, `affiliates`), embed with an explicit hint, e.g.
-  `profiles!subscription_assignments_profile_id_fkey(...)`, or PostgREST
-  rejects the whole query.
+- Relations come from `lib/db/relations.ts`. Tables with two FKs to
+  `profiles` name them by column, e.g. `subscription_assignments.profile_profile_id`,
+  `affiliates.profile_user_id`.
 - Edit forms submit with `onSubmit` + `new FormData(...)`, not the `action`
   prop: React 19 resets uncontrolled fields after a form action.
 
@@ -85,5 +114,17 @@ README.md for setup and docs/LAUNCH.md for going live.
 
 ## Secrets
 
-API keys (Paystack, Termii, Groq, email) are environment variables only,
-never stored in the `settings` table.
+API keys (Paystack, Termii, Groq, email, Blob, `BETTER_AUTH_SECRET`) are
+environment variables only, never stored in the `settings` table. Each
+optional integration checks its key and degrades gracefully when it's
+missing (`paystackConfigured()`, `storageConfigured()`).
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

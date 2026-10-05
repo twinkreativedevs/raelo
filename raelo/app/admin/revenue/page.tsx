@@ -1,6 +1,8 @@
+import { and, eq, gte } from "drizzle-orm";
 import Link from "next/link";
 
 import { requireStaff } from "@/lib/auth";
+import { schema } from "@/lib/db";
 import { revenueByMonth, startOfMonthUTC } from "@/lib/admin/metrics";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -12,28 +14,31 @@ export const metadata = { title: "Revenue" };
 const RANGES = [3, 6, 12, 24];
 
 export default async function RevenuePage({ searchParams }: { searchParams: Promise<{ months?: string }> }) {
-  const { supabase } = await requireStaff("/admin/revenue", ["admin"]);
+  const { asUser } = await requireStaff("/admin/revenue", ["admin"]);
   const requested = Number((await searchParams).months);
   const months = RANGES.includes(requested) ? requested : 12;
   const from = startOfMonthUTC(new Date(), -(months - 1));
 
-  const [series, { data: orders }] = await Promise.all([
-    revenueByMonth(supabase, months),
-    supabase
-      .from("orders")
-      .select("amount, discount_amount, kind, packages(name)")
-      .eq("status", "paid")
-      .gte("paid_at", from.toISOString()),
-  ]);
+  const { orders: o, packages } = schema;
+  const [series, orders] = await asUser((tx) =>
+    Promise.all([
+      revenueByMonth(tx, months),
+      tx
+        .select({ amount: o.amount, discount_amount: o.discount_amount, kind: o.kind, package_name: packages.name })
+        .from(o)
+        .innerJoin(packages, eq(packages.id, o.package_id))
+        .where(and(eq(o.status, "paid"), gte(o.paid_at, from.toISOString()))),
+    ]),
+  );
 
   const total = series.reduce((s, p) => s + p.amount, 0);
   const count = series.reduce((s, p) => s + p.orders, 0);
-  const renewals = (orders ?? []).filter((o) => o.kind === "renewal");
-  const discounts = (orders ?? []).reduce((s, o) => s + Number(o.discount_amount), 0);
+  const renewals = orders.filter((o) => o.kind === "renewal");
+  const discounts = orders.reduce((s, o) => s + Number(o.discount_amount), 0);
 
   const byPackage = new Map<string, { orders: number; amount: number }>();
-  for (const o of orders ?? []) {
-    const name = (o.packages as unknown as { name: string } | null)?.name ?? "Unknown";
+  for (const o of orders) {
+    const name = o.package_name ?? "Unknown";
     const row = byPackage.get(name) ?? { orders: 0, amount: 0 };
     row.orders += 1;
     row.amount += Number(o.amount);

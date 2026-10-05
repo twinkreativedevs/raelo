@@ -2,7 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { confirmOrderPayment } from "@/lib/payments";
 import { isValidWebhookSignature } from "@/lib/paystack";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+
+import { db, schema } from "@/lib/db";
 
 // Paystack webhook. Configure in Paystack: Settings → API Keys & Webhooks →
 // Webhook URL = https://<site>/api/webhooks/paystack
@@ -30,22 +32,25 @@ export async function POST(request: NextRequest) {
   const event = payload.event ?? "unknown";
   const reference = payload.data?.reference ?? null;
 
-  const admin = createAdminClient();
-  const { data: logged } = await admin
-    .from("paystack_events")
-    .insert({ event, reference, payload })
-    .select("id")
-    .single();
+  const { paystack_events } = schema;
+  const [logged] = await db
+    .insert(paystack_events)
+    .values({ event, reference, payload })
+    .returning({ id: paystack_events.id })
+    .catch((error) => {
+      console.error("paystack_events insert failed", error);
+      return [];
+    });
 
   const finish = async (
     status: "processed" | "ignored" | "error",
     result: string,
   ) => {
     if (!logged) return;
-    await admin
-      .from("paystack_events")
-      .update({ status, result, processed_at: new Date().toISOString() })
-      .eq("id", logged.id);
+    await db
+      .update(paystack_events)
+      .set({ status, result, processed_at: new Date().toISOString() })
+      .where(eq(paystack_events.id, logged.id));
   };
 
   if (event !== "charge.success" || !reference) {

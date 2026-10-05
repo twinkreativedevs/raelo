@@ -2,7 +2,7 @@ import "server-only";
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
-import type { Invoice, InvoiceLineItem } from "@/lib/supabase/database.types";
+import type { Invoice, InvoiceLineItem } from "@/lib/db/types";
 
 // Renders an invoice as a single-page A4 PDF. Uses the built-in Helvetica
 // fonts, which can't draw "₦", so amounts are written as "NGN 45,000.00".
