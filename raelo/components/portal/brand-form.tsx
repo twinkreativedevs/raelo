@@ -10,7 +10,7 @@ import {
 } from "@/components/brand/brief-fields";
 import { briefFormState } from "@/lib/brand-brief-state";
 import type { BrandBriefInput } from "@/lib/brand-brief";
-import type { OnboardingResponse } from "@/lib/supabase/database.types";
+import type { OnboardingResponse } from "@/lib/db/types";
 import { updateBrandBrief } from "@/app/onboarding/actions";
 
 export function BrandForm({ initialData }: { initialData: OnboardingResponse | null }) {

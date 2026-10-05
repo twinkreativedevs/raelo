@@ -1,4 +1,7 @@
+import { asc, inArray } from "drizzle-orm";
+
 import { requireStaff } from "@/lib/auth";
+import { schema } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { InviteForm } from "@/components/admin/invite-form";
 import { MemberControls } from "@/components/admin/member-controls";
@@ -7,20 +10,22 @@ import { AdminPageHeader, Panel, StatusBadge, Table, Td, Th } from "@/components
 export const metadata = { title: "Team" };
 
 export default async function TeamPage() {
-  const { supabase, profile: me } = await requireStaff("/admin/team", ["admin"]);
+  const { asUser, profile: me } = await requireStaff("/admin/team", ["admin"]);
 
-  const [{ data: members }, { data: assignments }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, full_name, email, phone, role, is_active, created_at")
-      .in("role", ["admin", "account_manager", "designer"])
-      .order("role")
-      .order("full_name"),
-    supabase.from("subscription_assignments").select("profile_id"),
-  ]);
+  const { profiles: p, subscription_assignments } = schema;
+  const [members, assignments] = await asUser((tx) =>
+    Promise.all([
+      tx
+        .select({ id: p.id, full_name: p.full_name, email: p.email, phone: p.phone, role: p.role, is_active: p.is_active, created_at: p.created_at })
+        .from(p)
+        .where(inArray(p.role, ["admin", "account_manager", "designer"]))
+        .orderBy(asc(p.role), asc(p.full_name)),
+      tx.select({ profile_id: subscription_assignments.profile_id }).from(subscription_assignments),
+    ]),
+  );
 
   const load = new Map<string, number>();
-  for (const a of assignments ?? []) load.set(a.profile_id, (load.get(a.profile_id) ?? 0) + 1);
+  for (const a of assignments) load.set(a.profile_id, (load.get(a.profile_id) ?? 0) + 1);
 
   return (
     <>
@@ -29,7 +34,7 @@ export default async function TeamPage() {
       <Panel title="Invite a team member">
         <InviteForm />
         <p className="mt-2 text-xs text-black/50">
-          They get an email from Supabase with a link to set their password, then sign in at /auth/login and land on /admin.
+          They get an email with a link to set their password (valid 24 hours), then sign in at /auth/login and land on /admin. Until email is connected, the link is shown here for you to send them.
         </p>
       </Panel>
 

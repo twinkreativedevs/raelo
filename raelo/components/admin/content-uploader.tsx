@@ -3,7 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/client";
+import { upload } from "@vercel/blob/client";
+
 import { CONTENT_MAX_BYTES, CONTENT_MIME_TYPES, storageSafeName } from "@/lib/content-upload";
 import { formatBytes } from "@/lib/format";
 import { registerUploadedItem } from "@/app/admin/content/actions";
@@ -11,9 +12,9 @@ import { registerUploadedItem } from "@/app/admin/content/actions";
 type Row = { name: string; size: number; state: "queued" | "uploading" | "done" | "error"; message?: string };
 
 /**
- * Uploads files straight from the browser to the private content bucket
- * (storage RLS: admins, or team assigned to this subscription), then
- * registers each one as a draft content item.
+ * Uploads files straight from the browser to the private Blob store
+ * (app/api/uploads only signs uploads for admins or the team assigned to
+ * this subscription), then registers each one as a draft content item.
  */
 export function ContentUploader({ subscriptionId, batchId }: { subscriptionId: string; batchId: string }) {
   const router = useRouter();
@@ -28,7 +29,6 @@ export function ContentUploader({ subscriptionId, batchId }: { subscriptionId: s
   const uploadAll = async (files: File[]) => {
     const start = rows.length;
     setRows((prev) => [...prev, ...files.map((f) => ({ name: f.name, size: f.size, state: "queued" as const }))]);
-    const storage = createClient().storage.from("content");
 
     // Sequential keeps order predictable and stays gentle on mobile data.
     for (const [offset, file] of files.entries()) {
@@ -43,16 +43,23 @@ export function ContentUploader({ subscriptionId, batchId }: { subscriptionId: s
       }
 
       setRow(index, { state: "uploading" });
-      const path = `${subscriptionId}/${batchId}/${crypto.randomUUID().slice(0, 8)}-${storageSafeName(file.name)}`;
-      const { error } = await storage.upload(path, file, { contentType: file.type, upsert: false });
-      if (error) {
-        setRow(index, { state: "error", message: "Upload failed" });
+      const path = `content/${subscriptionId}/${batchId}/${crypto.randomUUID().slice(0, 8)}-${storageSafeName(file.name)}`;
+      try {
+        await upload(path, file, {
+          access: "private",
+          handleUploadUrl: "/api/uploads",
+          clientPayload: JSON.stringify({ kind: "content", batchId }),
+          contentType: file.type,
+          multipart: file.size > 8 * 1024 * 1024,
+        });
+      } catch (error) {
+        setRow(index, { state: "error", message: error instanceof Error ? error.message : "Upload failed" });
         continue;
       }
 
+      // Deletes the file again if the record can't be saved.
       const result = await registerUploadedItem(batchId, { path, name: file.name, type: file.type, size: file.size });
       if (result.error) {
-        await storage.remove([path]);
         setRow(index, { state: "error", message: result.error });
       } else {
         setRow(index, { state: "done" });

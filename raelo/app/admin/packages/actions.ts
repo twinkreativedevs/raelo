@@ -1,8 +1,11 @@
 "use server";
 
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { authorize } from "@/lib/auth";
+import { schema } from "@/lib/db";
+import { isUuid } from "@/lib/format";
 
 const PERIODS = ["monthly", "quarterly", "annual", "one_time"];
 
@@ -41,11 +44,18 @@ export async function savePackage(formData: FormData) {
     active: formData.get("active") === "on",
   };
 
-  const { error } = id
-    ? await auth.supabase.from("packages").update(row).eq("id", id)
-    : await auth.supabase.from("packages").insert({ ...row, currency: "NGN" });
-
-  if (error) return { error: error.code === "23505" ? "That slug is already used." : "Couldn't save the package." };
+  if (id && !isUuid(id)) return { error: "Couldn't save the package." };
+  const { packages } = schema;
+  try {
+    await auth.asUser((tx) =>
+      id
+        ? tx.update(packages).set(row).where(eq(packages.id, id))
+        : tx.insert(packages).values({ ...row, currency: "NGN" }),
+    );
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code;
+    return { error: code === "23505" ? "That slug is already used." : "Couldn't save the package." };
+  }
 
   revalidatePath("/admin/packages");
   revalidatePath("/");

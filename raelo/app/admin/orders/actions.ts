@@ -1,9 +1,12 @@
 "use server";
 
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { logActivity } from "@/lib/activity";
 import { authorize } from "@/lib/auth";
+import { schema } from "@/lib/db";
+import { isUuid } from "@/lib/format";
 
 /**
  * Records a refund made in the Paystack dashboard: marks the order refunded
@@ -13,19 +16,26 @@ export async function markOrderRefunded(orderId: string) {
   const auth = await authorize(["admin"]);
   if (!auth) return { error: "Not allowed." };
 
-  const { data: order, error } = await auth.supabase
-    .from("orders")
-    .update({ status: "refunded" })
-    .eq("id", orderId)
-    .eq("status", "paid")
-    .select("id, user_id, order_number")
-    .maybeSingle();
+  if (!isUuid(orderId)) return { error: "Only paid orders can be marked refunded." };
+  const { orders, invoices, commissions } = schema;
 
-  if (error || !order) return { error: "Only paid orders can be marked refunded." };
+  const order = await auth.asUser(async (tx) => {
+    const [row] = await tx
+      .update(orders)
+      .set({ status: "refunded" })
+      .where(and(eq(orders.id, orderId), eq(orders.status, "paid")))
+      .returning({ id: orders.id, user_id: orders.user_id, order_number: orders.order_number });
+    if (!row) return null;
+    await tx.update(invoices).set({ status: "void" }).where(eq(invoices.order_id, row.id));
+    // A refunded sale earns no commission (unless it was already paid out).
+    await tx
+      .update(commissions)
+      .set({ status: "void" })
+      .where(and(eq(commissions.order_id, row.id), eq(commissions.status, "earned")));
+    return row;
+  }).catch(() => null);
 
-  await auth.supabase.from("invoices").update({ status: "void" }).eq("order_id", order.id);
-  // A refunded sale earns no commission (unless it was already paid out).
-  await auth.supabase.from("commissions").update({ status: "void" }).eq("order_id", order.id).eq("status", "earned");
+  if (!order) return { error: "Only paid orders can be marked refunded." };
   await logActivity(order.user_id, "order_refunded", {
     order_id: order.id,
     order_number: order.order_number,

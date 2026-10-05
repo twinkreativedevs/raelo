@@ -1,23 +1,33 @@
+import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
 
 // Uptime / go-live check. Reports only whether things are configured,
-// never their values. 200 when the database is reachable and the required
-// settings are present, 503 otherwise.
+// never their values. 200 when the database is reachable, migrated, and
+// the settings needed to run the site are present; 503 otherwise.
+// Paystack is reported but not required, so the site can run (with
+// checkout switched off) before payments are connected.
 
 export const dynamic = "force-dynamic";
 
 const REQUIRED = [
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
+  "DATABASE_URL",
+  "BETTER_AUTH_SECRET",
   "NEXT_PUBLIC_SITE_URL",
-  "PAYSTACK_SECRET_KEY",
   "CRON_SECRET",
 ] as const;
 
-const OPTIONAL = ["RESEND_API_KEY", "TERMII_API_KEY", "GROQ_API_KEY"] as const;
+const OPTIONAL = [
+  "PAYSTACK_SECRET_KEY",
+  "BLOB_READ_WRITE_TOKEN",
+  "RESEND_API_KEY",
+  "TERMII_API_KEY",
+  "GROQ_API_KEY",
+] as const;
+
+// Bump when a migration adds something the app depends on.
+const LATEST_MIGRATION = "0018_complimentary_subscriptions.sql";
 
 export async function GET() {
   const env = Object.fromEntries(
@@ -27,21 +37,21 @@ export async function GET() {
   let database = false;
   let migrations = false;
   try {
-    const admin = createAdminClient();
-    const { error } = await admin.from("settings").select("key").limit(1);
-    database = !error;
-    // notification_log arrives in the newest migration (0016).
-    const { error: latest } = await admin.from("notification_log").select("id").limit(1);
-    migrations = !latest;
+    await db.execute(sql`select 1`);
+    database = true;
+    const { rows } = await db.execute<{ found: boolean }>(
+      sql`select exists (select 1 from public.schema_migrations where name = ${LATEST_MIGRATION}) as found`,
+    );
+    migrations = rows[0]?.found === true;
   } catch {
-    database = false;
+    // database stays false, or migrations haven't run (no schema_migrations)
   }
 
   const paystackMode = process.env.PAYSTACK_SECRET_KEY?.startsWith("sk_live_")
     ? "live"
     : process.env.PAYSTACK_SECRET_KEY?.startsWith("sk_test_")
       ? "test"
-      : "missing";
+      : "not connected";
 
   const ok = database && migrations && REQUIRED.every((name) => env[name]);
   return NextResponse.json(

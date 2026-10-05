@@ -1,10 +1,12 @@
+import { asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireStaff } from "@/lib/auth";
+import { schema } from "@/lib/db";
 import { clientLabel } from "@/lib/admin/subscriptions";
 import { signPreviewUrls } from "@/lib/content";
-import { formatDate } from "@/lib/format";
+import { formatDate, isUuid } from "@/lib/format";
 import { BatchForm } from "@/components/admin/batch-form";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { ContentUploader } from "@/components/admin/content-uploader";
@@ -16,24 +18,30 @@ export const metadata = { title: "Content batch" };
 
 export default async function BatchEditorPage({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = await params;
-  const { supabase, profile } = await requireStaff(`/admin/content/${batchId}`);
+  const { asUser, profile } = await requireStaff(`/admin/content/${batchId}`);
+  if (!isUuid(batchId)) notFound();
 
-  const { data: batch } = await supabase
-    .from("content_batches")
-    .select("id, title, status, period_start, client_message, internal_notes, published_at, subscription_id, subscriptions(user_id, profiles(full_name, company_name, email))")
-    .eq("id", batchId)
-    .maybeSingle();
+  const batch = await asUser((tx) =>
+    tx.query.content_batches.findFirst({
+      where: eq(schema.content_batches.id, batchId),
+      columns: { id: true, title: true, status: true, period_start: true, client_message: true, internal_notes: true, published_at: true, subscription_id: true },
+      with: {
+        subscription: {
+          columns: { user_id: true },
+          with: { profile: { columns: { full_name: true, company_name: true, email: true } } },
+        },
+        content_items: {
+          columns: { id: true, title: true, caption: true, platform: true, content_type: true, scheduled_for: true, mime_type: true, file_name: true, file_size_bytes: true, storage_path: true, sort_order: true },
+          orderBy: [asc(schema.content_items.sort_order), asc(schema.content_items.created_at)],
+        },
+      },
+    }),
+  );
   if (!batch) notFound();
 
-  const { data: items } = await supabase
-    .from("content_items")
-    .select("id, title, caption, platform, content_type, scheduled_for, mime_type, file_name, file_size_bytes, storage_path, sort_order")
-    .eq("batch_id", batch.id)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  const previews = await signPreviewUrls(items ?? []);
-  const sub = batch.subscriptions as unknown as { user_id: string; profiles: { full_name: string | null; company_name: string | null; email: string } | null } | null;
+  const items = batch.content_items;
+  const previews = await signPreviewUrls(items);
+  const sub = batch.subscription;
   const canPublish = profile.role === "admin" || profile.role === "account_manager";
   const canDelete = profile.role === "admin" || batch.status === "draft";
 
@@ -43,7 +51,7 @@ export default async function BatchEditorPage({ params }: { params: Promise<{ ba
 
       <AdminPageHeader
         title={batch.title}
-        description={`${clientLabel(sub?.profiles ?? null)}${batch.published_at ? ` · published ${formatDate(batch.published_at)}` : ""}`}
+        description={`${clientLabel(sub?.profile ?? null)}${batch.published_at ? ` · published ${formatDate(batch.published_at)}` : ""}`}
       >
         <StatusBadge status={batch.status} />
         {canPublish && batch.status === "draft" && (

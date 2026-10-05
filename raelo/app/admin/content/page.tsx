@@ -1,6 +1,9 @@
+import { and, count, desc, eq, ilike } from "drizzle-orm";
 import Link from "next/link";
 
 import { requireStaff } from "@/lib/auth";
+import { batchFileCounts } from "@/lib/content";
+import { schema } from "@/lib/db";
 import { ilikePattern } from "@/lib/admin/search";
 import { clientLabel, workableSubscriptions } from "@/lib/admin/subscriptions";
 import { formatDate } from "@/lib/format";
@@ -16,7 +19,7 @@ export default async function ContentPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const { supabase } = await requireStaff("/admin/content");
+  const { asUser } = await requireStaff("/admin/content");
   const params = await searchParams;
   const status = params.status === "draft" || params.status === "published" ? params.status : undefined;
   const q = params.q?.trim().slice(0, 50) || undefined;
@@ -24,16 +27,33 @@ export default async function ContentPage({
   const page = Math.max(1, Number(params.page) || 1);
 
   // RLS limits team members to batches of their assigned subscriptions.
-  let query = supabase
-    .from("content_batches")
-    .select("id, title, status, period_start, published_at, updated_at, subscriptions(user_id, profiles(full_name, company_name, email)), content_items(count)", { count: "exact" });
-  if (status) query = query.eq("status", status);
-  if (term) query = query.ilike("title", term);
+  const { content_batches } = schema;
+  const where = and(
+    status ? eq(content_batches.status, status) : undefined,
+    term ? ilike(content_batches.title, term) : undefined,
+  );
 
-  const [{ data: batches, count }, subscriptions] = await Promise.all([
-    query.order("updated_at", { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
-    workableSubscriptions(supabase),
-  ]);
+  const { batches, total, subscriptions, fileCounts } = await asUser(async (tx) => {
+    const [batches, [{ n }], subscriptions] = await Promise.all([
+      tx.query.content_batches.findMany({
+        where,
+        orderBy: [desc(content_batches.updated_at)],
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        columns: { id: true, title: true, status: true, period_start: true, published_at: true, updated_at: true },
+        with: {
+          subscription: {
+            columns: { user_id: true },
+            with: { profile: { columns: { full_name: true, company_name: true, email: true } } },
+          },
+        },
+      }),
+      tx.select({ n: count() }).from(content_batches).where(where),
+      workableSubscriptions(tx),
+    ]);
+    const fileCounts = await batchFileCounts(tx, batches.map((b) => b.id));
+    return { batches, total: n, subscriptions, fileCounts };
+  });
 
   return (
     <>
@@ -55,7 +75,7 @@ export default async function ContentPage({
       </form>
 
       <Panel>
-        {batches?.length ? (
+        {batches.length ? (
           <>
             <Table>
               <thead>
@@ -63,12 +83,12 @@ export default async function ContentPage({
               </thead>
               <tbody>
                 {batches.map((b) => {
-                  const sub = b.subscriptions as unknown as { user_id: string; profiles: { full_name: string | null; company_name: string | null; email: string } | null } | null;
-                  const files = (b.content_items as unknown as { count: number }[])[0]?.count ?? 0;
+                  const sub = b.subscription;
+                  const files = fileCounts.get(b.id) ?? 0;
                   return (
                     <tr key={b.id}>
                       <Td><Link href={`/admin/content/${b.id}`} className="font-semibold hover:text-[#ed1c24]">{b.title}</Link></Td>
-                      <Td>{clientLabel(sub?.profiles ?? null)}</Td>
+                      <Td>{clientLabel(sub?.profile ?? null)}</Td>
                       <Td className="tabular-nums">{files}</Td>
                       <Td><StatusBadge status={b.status} /></Td>
                       <Td className="text-black/60">{formatDate(b.status === "published" ? b.published_at : b.updated_at)}</Td>
@@ -77,7 +97,7 @@ export default async function ContentPage({
                 })}
               </tbody>
             </Table>
-            <Pagination page={page} pageSize={PAGE_SIZE} total={count ?? 0} basePath="/admin/content" params={{ q, status }} />
+            <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/admin/content" params={{ q, status }} />
           </>
         ) : (
           <EmptyState>No batches yet.</EmptyState>

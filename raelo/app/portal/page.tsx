@@ -1,44 +1,49 @@
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { isStaffRole, requireProfile } from "@/lib/auth";
+import { batchFileCounts } from "@/lib/content";
+import { schema } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { PageHeader } from "@/components/portal/page-header";
 
 export const metadata: Metadata = { title: "Your account" };
 
 export default async function PortalHome() {
-  const { supabase, profile } = await requireProfile("/portal");
+  const { asUser, profile } = await requireProfile("/portal");
 
   // Login lands on /portal by default; the team works in /admin.
   if (isStaffRole(profile.role)) redirect("/admin");
 
-  const [{ data: subscriptions }, { data: onboarding }, { data: batches }] =
-    await Promise.all([
-      supabase
-        .from("subscriptions")
-        .select("id, status, expires_at, packages(name)")
-        .eq("user_id", profile.id)
-        .in("status", ["active", "paused", "expired"])
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("onboarding_responses")
-        .select("completed")
-        .eq("user_id", profile.id)
-        .maybeSingle(),
+  const { subscriptions, onboarding, batches, fileCounts } = await asUser(async (tx) => {
+    const { subscriptions: subs, onboarding_responses, content_batches, packages } = schema;
+    const [subscriptions, [onboarding], batches] = await Promise.all([
+      tx
+        .select({ id: subs.id, status: subs.status, expires_at: subs.expires_at, package_name: packages.name })
+        .from(subs)
+        .innerJoin(packages, eq(packages.id, subs.package_id))
+        .where(and(eq(subs.user_id, profile.id), inArray(subs.status, ["active", "paused", "expired"])))
+        .orderBy(desc(subs.created_at)),
+      tx
+        .select({ completed: onboarding_responses.completed })
+        .from(onboarding_responses)
+        .where(eq(onboarding_responses.user_id, profile.id)),
       // RLS only returns published batches to clients.
-      supabase
-        .from("content_batches")
-        .select("id, title, published_at, content_items(count)")
-        .order("published_at", { ascending: false })
+      tx
+        .select({ id: content_batches.id, title: content_batches.title, published_at: content_batches.published_at })
+        .from(content_batches)
+        .orderBy(desc(content_batches.published_at))
         .limit(3),
     ]);
+    const fileCounts = await batchFileCounts(tx, batches.map((b) => b.id));
+    return { subscriptions, onboarding, batches, fileCounts };
+  });
 
   const firstName = profile.full_name?.split(" ")[0];
-  const active = subscriptions?.find((sub) => sub.status === "active");
-  const current = active ?? subscriptions?.[0];
-  const currentPkg = current?.packages as unknown as { name: string } | null;
+  const active = subscriptions.find((sub) => sub.status === "active");
+  const current = active ?? subscriptions[0];
 
   return (
     <div className="space-y-8">
@@ -69,7 +74,7 @@ export default async function PortalHome() {
           <p className="text-xs font-bold uppercase tracking-widest text-black/40">
             Plan
           </p>
-          <p className="mt-2 text-xl font-black">{currentPkg?.name ?? "None yet"}</p>
+          <p className="mt-2 text-xl font-black">{current?.package_name ?? "None yet"}</p>
           <p className="mt-1 text-sm capitalize text-black/60">
             {current
               ? `${current.status} · until ${formatDate(current.expires_at)}`
@@ -127,9 +132,7 @@ export default async function PortalHome() {
           <h2 className="font-bold">Latest content</h2>
           <ul className="mt-2 divide-y divide-black/5">
             {batches.map((batch) => {
-              const count =
-                (batch.content_items as unknown as { count: number }[])?.[0]
-                  ?.count ?? 0;
+              const count = fileCounts.get(batch.id) ?? 0;
               return (
                 <li key={batch.id}>
                   <Link

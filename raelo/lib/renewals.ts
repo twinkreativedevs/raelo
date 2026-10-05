@@ -6,7 +6,11 @@ import { logActivity } from "@/lib/activity";
 import { afterResponse, notifyUser } from "@/lib/notifications";
 import { chargeAuthorization } from "@/lib/paystack";
 import { confirmOrderPayment, toKobo } from "@/lib/payments";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { and, asc, eq, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
+
+import { db, schema } from "@/lib/db";
+
+const { subscriptions, orders, packages, profiles, payment_methods } = schema;
 
 // Recurring billing. The daily cron (app/api/cron/billing) calls
 // runBillingCycle(); the portal's "Renew now" button calls
@@ -45,66 +49,68 @@ export async function createRenewalOrder(
   subscriptionId: string,
   { replacePending }: { replacePending: boolean },
 ): Promise<CreateRenewalOrderResult> {
-  const admin = createAdminClient();
+  const [subscription] = await db
+    .select({
+      id: subscriptions.id,
+      user_id: subscriptions.user_id,
+      package_id: subscriptions.package_id,
+      price: packages.price,
+      currency: packages.currency,
+      email: profiles.email,
+    })
+    .from(subscriptions)
+    .innerJoin(packages, eq(packages.id, subscriptions.package_id))
+    .innerJoin(profiles, eq(profiles.id, subscriptions.user_id))
+    .where(eq(subscriptions.id, subscriptionId));
 
-  const { data: subscription } = await admin
-    .from("subscriptions")
-    .select("id, user_id, package_id, packages(price, currency), profiles(email)")
-    .eq("id", subscriptionId)
-    .maybeSingle();
-
-  const pkg = subscription?.packages as unknown as
-    | { price: number; currency: string }
-    | null;
-  const profile = subscription?.profiles as unknown as { email: string | null } | null;
-
-  if (!subscription || !pkg || !profile?.email) {
+  if (!subscription?.email) {
     return { ok: false, reason: "not_found" };
   }
 
   // Clear out pending renewals that are in the way. A late Paystack success
   // on an abandoned order still activates it (confirmOrderPayment re-checks
   // any non-paid order).
-  let abandon = admin
-    .from("orders")
-    .update({ status: "abandoned", failure_reason: "superseded" })
-    .eq("subscription_id", subscriptionId)
-    .eq("kind", "renewal")
-    .eq("status", "pending");
-  if (!replacePending) {
-    abandon = abandon.lt(
-      "created_at",
-      new Date(Date.now() - STALE_PENDING_MS).toISOString(),
+  await db
+    .update(orders)
+    .set({ status: "abandoned", failure_reason: "superseded" })
+    .where(
+      and(
+        eq(orders.subscription_id, subscriptionId),
+        eq(orders.kind, "renewal"),
+        eq(orders.status, "pending"),
+        replacePending ? undefined : lt(orders.created_at, new Date(Date.now() - STALE_PENDING_MS).toISOString()),
+      ),
     );
-  }
-  await abandon;
 
-  const subtotal = Number(pkg.price);
-  const { data: order, error } = await admin
-    .from("orders")
-    .insert({
+  const subtotal = Number(subscription.price);
+  try {
+    const [order] = await db
+      .insert(orders)
+      .values({
       user_id: subscription.user_id,
       subscription_id: subscription.id,
       package_id: subscription.package_id,
       kind: "renewal",
       status: "pending",
-      currency: pkg.currency,
+      currency: subscription.currency,
       subtotal,
       discount_amount: 0,
       amount: subtotal,
       payment_reference: `raelo_rn_${randomUUID()}`,
-    })
-    .select("id, order_number, amount, payment_reference")
-    .single();
-
-  if (error || !order) {
+      })
+      .returning({
+        id: orders.id,
+        order_number: orders.order_number,
+        amount: orders.amount,
+        payment_reference: orders.payment_reference,
+      });
+    return { ok: true, order, email: subscription.email };
+  } catch (error) {
     // 23505 = the one-pending-renewal unique index (migration 0014).
-    if (error?.code === "23505") return { ok: false, reason: "pending_exists" };
-    console.error("createRenewalOrder failed", subscriptionId, error?.message);
+    if (isUniqueViolation(error)) return { ok: false, reason: "pending_exists" };
+    console.error("createRenewalOrder failed", subscriptionId, error);
     return { ok: false, reason: "error" };
   }
-
-  return { ok: true, order, email: profile.email };
 }
 
 async function recordFailure(
@@ -112,27 +118,29 @@ async function recordFailure(
   orderId: string | null,
   reason: string,
 ) {
-  const admin = createAdminClient();
-
   if (orderId) {
-    await admin
-      .from("orders")
-      .update({ status: "failed", failure_reason: reason.slice(0, 500) })
-      .eq("id", orderId)
-      .eq("status", "pending");
+    await db
+      .update(orders)
+      .set({ status: "failed", failure_reason: reason.slice(0, 500) })
+      .where(and(eq(orders.id, orderId), eq(orders.status, "pending")));
   }
 
-  const { data: sub } = await admin
-    .from("subscriptions")
-    .select("user_id, renewal_failures, expires_at, packages(name)")
-    .eq("id", subscriptionId)
-    .single();
+  const [sub] = await db
+    .select({
+      user_id: subscriptions.user_id,
+      renewal_failures: subscriptions.renewal_failures,
+      expires_at: subscriptions.expires_at,
+      package_name: packages.name,
+    })
+    .from(subscriptions)
+    .innerJoin(packages, eq(packages.id, subscriptions.package_id))
+    .where(eq(subscriptions.id, subscriptionId));
 
   if (sub) {
-    await admin
-      .from("subscriptions")
-      .update({ renewal_failures: sub.renewal_failures + 1 })
-      .eq("id", subscriptionId);
+    await db
+      .update(subscriptions)
+      .set({ renewal_failures: sql`${subscriptions.renewal_failures} + 1` })
+      .where(eq(subscriptions.id, subscriptionId));
 
     await logActivity(sub.user_id, "renewal_failed", {
       subscription_id: subscriptionId,
@@ -142,12 +150,11 @@ async function recordFailure(
     });
 
     // One "couldn't renew" message per billing period, not per retry.
-    const pkg = sub.packages as unknown as { name: string } | null;
     await afterResponse(() =>
       notifyUser(
         "subscription_expiring",
         sub.user_id,
-        { packageName: pkg?.name ?? "your package", expiresAt: sub.expires_at, reason },
+        { packageName: sub.package_name ?? "your package", expiresAt: sub.expires_at, reason },
         { dedupeKey: `renewal-failed:${subscriptionId}:${sub.expires_at}`, dedupeHours: 24 * 40 },
       ),
     );
@@ -158,17 +165,15 @@ type RenewalOutcome = "renewed" | "pending" | "failed" | "skipped";
 
 /** Charges the subscription's saved card for the next period. */
 export async function renewWithSavedCard(subscriptionId: string): Promise<RenewalOutcome> {
-  const admin = createAdminClient();
-
-  const { data: sub } = await admin
-    .from("subscriptions")
-    .select("id, payment_methods(authorization_code, email, reusable)")
-    .eq("id", subscriptionId)
-    .single();
-
-  const method = sub?.payment_methods as unknown as
-    | { authorization_code: string; email: string; reusable: boolean }
-    | null;
+  const [method] = await db
+    .select({
+      authorization_code: payment_methods.authorization_code,
+      email: payment_methods.email,
+      reusable: payment_methods.reusable,
+    })
+    .from(subscriptions)
+    .innerJoin(payment_methods, eq(payment_methods.id, subscriptions.payment_method_id))
+    .where(eq(subscriptions.id, subscriptionId));
 
   if (!method?.reusable) return "skipped";
 
@@ -240,7 +245,6 @@ export interface BillingCycleSummary {
  *   2. mark subscriptions expired once the grace period has passed
  */
 export async function runBillingCycle(now = new Date()): Promise<BillingCycleSummary> {
-  const admin = createAdminClient();
   const summary: BillingCycleSummary = {
     attempted: 0,
     renewed: 0,
@@ -252,40 +256,47 @@ export async function runBillingCycle(now = new Date()): Promise<BillingCycleSum
 
   const retryCutoff = new Date(now.getTime() - RETRY_GAP_MS).toISOString();
 
-  const { data: due, error } = await admin
-    .from("subscriptions")
-    .select("id")
-    .eq("status", "active")
-    .eq("auto_renew", true)
-    .not("payment_method_id", "is", null)
-    .lt("renewal_failures", MAX_RENEWAL_FAILURES)
-    .lte("expires_at", new Date(now.getTime() + RENEW_AHEAD_MS).toISOString())
-    .or(`last_renewal_attempt_at.is.null,last_renewal_attempt_at.lt."${retryCutoff}"`)
-    .order("expires_at", { ascending: true })
+  const due = await db
+    .select({ id: subscriptions.id })
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.status, "active"),
+        eq(subscriptions.auto_renew, true),
+        eq(subscriptions.complimentary, false),
+        isNotNull(subscriptions.payment_method_id),
+        lt(subscriptions.renewal_failures, MAX_RENEWAL_FAILURES),
+        lte(subscriptions.expires_at, new Date(now.getTime() + RENEW_AHEAD_MS).toISOString()),
+        or(isNull(subscriptions.last_renewal_attempt_at), lt(subscriptions.last_renewal_attempt_at, retryCutoff)),
+      ),
+    )
+    .orderBy(asc(subscriptions.expires_at))
     .limit(BATCH_SIZE);
 
-  if (error) throw new Error(`Couldn't load due subscriptions: ${error.message}`);
-
-  for (const { id } of due ?? []) {
+  for (const { id } of due) {
     // Stamp first, so a crash mid-charge can't cause a retry within the gap.
-    await admin
-      .from("subscriptions")
-      .update({ last_renewal_attempt_at: now.toISOString() })
-      .eq("id", id);
+    await db
+      .update(subscriptions)
+      .set({ last_renewal_attempt_at: now.toISOString() })
+      .where(eq(subscriptions.id, id));
 
     summary.attempted += 1;
     const outcome = await renewWithSavedCard(id);
     summary[outcome] += 1;
   }
 
-  const { data: expired } = await admin
-    .from("subscriptions")
-    .update({ status: "expired" })
-    .eq("status", "active")
-    .lt("expires_at", new Date(now.getTime() - GRACE_PERIOD_MS).toISOString())
-    .select("id, user_id");
+  const expired = await db
+    .update(subscriptions)
+    .set({ status: "expired" })
+    .where(
+      and(
+        eq(subscriptions.status, "active"),
+        lt(subscriptions.expires_at, new Date(now.getTime() - GRACE_PERIOD_MS).toISOString()),
+      ),
+    )
+    .returning({ id: subscriptions.id, user_id: subscriptions.user_id });
 
-  for (const sub of expired ?? []) {
+  for (const sub of expired) {
     summary.expired += 1;
     await logActivity(sub.user_id, "subscription_expired", {
       subscription_id: sub.id,
@@ -293,4 +304,10 @@ export async function runBillingCycle(now = new Date()): Promise<BillingCycleSum
   }
 
   return summary;
+}
+
+/** Postgres unique_violation (e.g. the one-pending-renewal index). */
+export function isUniqueViolation(error: unknown) {
+  const cause = (error as { cause?: { code?: string } })?.cause;
+  return (error as { code?: string })?.code === "23505" || cause?.code === "23505";
 }

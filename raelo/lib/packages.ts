@@ -1,5 +1,8 @@
-import { createPublicClient } from "@/lib/supabase/public";
-import { hasEnvVars } from "@/lib/utils";
+import "server-only";
+
+import { and, asc, eq } from "drizzle-orm";
+
+import { db, schema } from "@/lib/db";
 
 export interface PublicPackage {
   id: string;
@@ -15,26 +18,30 @@ export interface PublicPackage {
 
 /** Active packages in display order. Returns [] if they can't be loaded. */
 export async function getActivePackages(): Promise<PublicPackage[]> {
-  if (!hasEnvVars) return [];
+  if (!process.env.DATABASE_URL) return [];
 
+  const { packages } = schema;
   try {
-    const { data, error } = await createPublicClient()
-      .from("packages")
-      .select(
-        "id, name, slug, description, price, currency, billing_period, deliverables, is_popular",
-      )
-      .eq("active", true)
-      .order("sort_order", { ascending: true })
-      .order("price", { ascending: true });
+    const rows = await db
+      .select({
+        id: packages.id,
+        name: packages.name,
+        slug: packages.slug,
+        description: packages.description,
+        price: packages.price,
+        currency: packages.currency,
+        billing_period: packages.billing_period,
+        deliverables: packages.deliverables,
+        is_popular: packages.is_popular,
+      })
+      .from(packages)
+      .where(and(eq(packages.active, true)))
+      .orderBy(asc(packages.sort_order), asc(packages.price));
 
-    if (error) throw error;
-
-    return (data ?? []).map((pkg) => ({
+    return rows.map((pkg) => ({
       ...pkg,
       price: Number(pkg.price),
-      deliverables: Array.isArray(pkg.deliverables)
-        ? (pkg.deliverables as string[])
-        : [],
+      deliverables: Array.isArray(pkg.deliverables) ? (pkg.deliverables as string[]) : [],
     }));
   } catch (error) {
     console.error("getActivePackages failed", error);

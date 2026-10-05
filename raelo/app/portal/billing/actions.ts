@@ -1,33 +1,34 @@
 "use server";
 
+import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 import { logActivity } from "@/lib/activity";
-import { initializeTransaction } from "@/lib/paystack";
+import { currentUser } from "@/lib/auth";
+import { db, schema } from "@/lib/db";
+import { initializeTransaction, paystackConfigured } from "@/lib/paystack";
 import { toKobo } from "@/lib/payments";
 import { createRenewalOrder } from "@/lib/renewals";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+
+const { subscriptions } = schema;
 
 /**
  * Returns the subscription if it belongs to the signed-in user. The lookup
- * uses the user's own client, so RLS guarantees ownership.
+ * runs as the user, so RLS guarantees ownership.
  */
 async function getOwnSubscription(subscriptionId: string) {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  const userId = data?.claims?.sub as string | undefined;
-  if (!userId) return null;
+  const auth = await currentUser();
+  if (!auth || typeof subscriptionId !== "string") return null;
 
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("id, user_id, status")
-    .eq("id", subscriptionId)
-    .eq("user_id", userId)
-    .maybeSingle();
+  const [subscription] = await auth.asUser((tx) =>
+    tx
+      .select({ id: subscriptions.id, user_id: subscriptions.user_id, status: subscriptions.status })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, subscriptionId), eq(subscriptions.user_id, auth.profile.id))),
+  ).catch(() => []);
 
-  return subscription;
+  return subscription ?? null;
 }
 
 async function siteUrl() {
@@ -41,6 +42,9 @@ export async function renewNow(subscriptionId: string) {
   const subscription = await getOwnSubscription(subscriptionId);
   if (!subscription || !["active", "expired"].includes(subscription.status)) {
     return { error: "This subscription can't be renewed." };
+  }
+  if (!paystackConfigured()) {
+    return { error: "Online payment isn't switched on yet. Please contact us to renew." };
   }
 
   const created = await createRenewalOrder(subscription.id, {
@@ -76,17 +80,18 @@ export async function setAutoRenew(subscriptionId: string, autoRenew: boolean) {
 
   // Clients can't update subscriptions directly (RLS); ownership was checked
   // above, and only this one column changes.
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from("subscriptions")
-    .update({
-      auto_renew: autoRenew,
-      // Turning it back on gives the saved card a fresh set of attempts.
-      ...(autoRenew ? { renewal_failures: 0 } : {}),
-    })
-    .eq("id", subscription.id);
-
-  if (error) return { error: "Couldn't update auto-renew. Please try again." };
+  try {
+    await db
+      .update(subscriptions)
+      .set({
+        auto_renew: Boolean(autoRenew),
+        // Turning it back on gives the saved card a fresh set of attempts.
+        ...(autoRenew ? { renewal_failures: 0 } : {}),
+      })
+      .where(eq(subscriptions.id, subscription.id));
+  } catch {
+    return { error: "Couldn't update auto-renew. Please try again." };
+  }
 
   await logActivity(subscription.user_id, "auto_renew_changed", {
     subscription_id: subscription.id,

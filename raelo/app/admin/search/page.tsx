@@ -1,6 +1,8 @@
+import { and, eq, ilike, or } from "drizzle-orm";
 import Link from "next/link";
 
 import { requireStaff } from "@/lib/auth";
+import { schema } from "@/lib/db";
 import { ilikePattern } from "@/lib/admin/search";
 import { formatDate, formatMoney } from "@/lib/format";
 import { SearchBox } from "@/components/admin/search-box";
@@ -9,31 +11,44 @@ import { AdminPageHeader, EmptyState, Panel, StatusBadge } from "@/components/ad
 export const metadata = { title: "Search" };
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { supabase, profile } = await requireStaff("/admin/search");
+  const { asUser, profile } = await requireStaff("/admin/search");
   const q = ((await searchParams).q ?? "").trim().slice(0, 100);
   const term = ilikePattern(q) ?? "";
   const isAdmin = profile.role === "admin";
 
   // RLS narrows results for team members to their assigned clients; orders
   // and invoices are admin-only.
-  const [clients, orders, invoices] = q
-    ? await Promise.all([
-        supabase
-          .from("profiles")
-          .select("id, full_name, email, company_name, role")
-          .eq("role", "client")
-          .or(`full_name.ilike.${term},email.ilike.${term},company_name.ilike.${term},phone.ilike.${term}`)
-          .limit(20),
-        isAdmin
-          ? supabase.from("orders").select("id, order_number, status, amount, currency, created_at, user_id").ilike("order_number", term).limit(20)
-          : Promise.resolve({ data: [] }),
-        isAdmin
-          ? supabase.from("invoices").select("id, invoice_number, total, currency, issued_at, billed_to_name").or(`invoice_number.ilike.${term},billed_to_name.ilike.${term},billed_to_email.ilike.${term}`).limit(20)
-          : Promise.resolve({ data: [] }),
-      ])
-    : [{ data: [] }, { data: [] }, { data: [] }];
+  const { profiles: p, orders: o, invoices: i } = schema;
+  const [clientRows, orderRows, invoiceRows] = q
+    ? await asUser((tx) =>
+        Promise.all([
+          tx
+            .select({ id: p.id, full_name: p.full_name, email: p.email, company_name: p.company_name, role: p.role })
+            .from(p)
+            .where(and(eq(p.role, "client"), or(ilike(p.full_name, term), ilike(p.email, term), ilike(p.company_name, term), ilike(p.phone, term))))
+            .limit(20),
+          isAdmin
+            ? tx
+                .select({ id: o.id, order_number: o.order_number, status: o.status, amount: o.amount, currency: o.currency, created_at: o.created_at, user_id: o.user_id })
+                .from(o)
+                .where(ilike(o.order_number, term))
+                .limit(20)
+            : Promise.resolve([]),
+          isAdmin
+            ? tx
+                .select({ id: i.id, invoice_number: i.invoice_number, total: i.total, currency: i.currency, issued_at: i.issued_at, billed_to_name: i.billed_to_name })
+                .from(i)
+                .where(or(ilike(i.invoice_number, term), ilike(i.billed_to_name, term), ilike(i.billed_to_email, term)))
+                .limit(20)
+            : Promise.resolve([]),
+        ]),
+      )
+    : [[], [], []];
+  const clients = { data: clientRows };
+  const orders = { data: orderRows };
+  const invoices = { data: invoiceRows };
 
-  const total = (clients.data?.length ?? 0) + (orders.data?.length ?? 0) + (invoices.data?.length ?? 0);
+  const total = clients.data.length + orders.data.length + invoices.data.length;
 
   return (
     <>

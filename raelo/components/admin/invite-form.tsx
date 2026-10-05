@@ -32,7 +32,7 @@ export function InviteForm() {
       <button disabled={pending} className="h-9 rounded-lg bg-[#ed1c24] px-4 text-sm font-semibold text-white disabled:opacity-50">
         {pending ? "Sending…" : "Send invite"}
       </button>
-      {message && <p className={`w-full text-sm ${message.ok ? "text-green-700" : "text-red-600"}`}>{message.text}</p>}
+      {message && <p className={`w-full break-all text-sm ${message.ok ? "text-green-700" : "text-red-600"}`}>{message.text}</p>}
     </form>
   );
 }

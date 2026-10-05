@@ -3,6 +3,7 @@ import Link from "next/link";
 import { formatPrice, getActivePackages } from "@/lib/packages";
 import { getPublicAssistant } from "@/lib/assistant";
 import { AssistantWidget } from "@/components/assistant-widget";
+import { AudienceArt, CalendarVisual, HeroVisual, PortalVisual } from "@/components/landing/visuals";
 
 // Packages come from the database; re-fetch at most every 5 minutes.
 export const revalidate = 300;
@@ -76,12 +77,36 @@ const audiences = [
 ];
 
 const faqs = [
-  "How does Raelo's social media service work?",
-  "What if I don't like the content?",
-  "Can I cancel anytime?",
-  "Do I need to provide my own content?",
-  "How long does it take to receive my first post(s)?",
-  "Do you manage multiple platforms?",
+  {
+    question: "How does Raelo's social media service work?",
+    answer:
+      "Pick a monthly package and pay securely online. Then fill in a short brand brief (your logo, colours, audience and platforms). Our designers create your posts and captions, and each month's content appears in your private Raelo portal, ready to download and post.",
+  },
+  {
+    question: "What if I don't like the content?",
+    answer:
+      "Tell your account manager what you'd like changed and we'll revise it. Keeping your brand brief up to date in the portal helps every batch get closer to your style.",
+  },
+  {
+    question: "Can I cancel anytime?",
+    answer:
+      "Yes. Turn off auto-renew in your portal's Billing page and you won't be charged again. Your plan stays active until the end of the period you've paid for. See our refund policy for details.",
+  },
+  {
+    question: "Do I need to provide my own content?",
+    answer:
+      "No. We design everything from your brand brief. If you have photos of your products, team or space, you can share a link to them in your brief and we'll work them in.",
+  },
+  {
+    question: "How long does it take to receive my first post(s)?",
+    answer:
+      "We start as soon as your brand brief is complete. Your first batch appears in your portal and we'll email you the moment it's ready to download.",
+  },
+  {
+    question: "Do you manage multiple platforms?",
+    answer:
+      "Yes. Starter covers one platform, Growth two and Pro three. The Business package covers several brands. Every post is sized and captioned for the platform it's meant for.",
+  },
 ];
 
 export default async function Home() {
@@ -116,7 +141,7 @@ export default async function Home() {
               Packages
             </a>
             <a href="#results" className="text-sm font-medium">
-              Results
+              Who It&apos;s For
             </a>
             <a href="#faq" className="text-sm font-medium">
               FAQ
@@ -207,20 +232,7 @@ export default async function Home() {
             </div>
           </div>
 
-          <div className="relative flex min-h-[560px] items-center justify-center">
-            <div className="absolute h-[430px] w-[430px] rounded-[45%] bg-[#ed1c24] lg:h-[520px] lg:w-[520px]" />
-
-            <div className="relative z-10 flex h-[470px] w-[380px] items-center justify-center rounded-[40%] bg-black/5">
-              <span className="text-sm font-medium text-black/30">
-                Raelo Hero Image
-              </span>
-            </div>
-
-            <div className="absolute right-4 top-28 z-20 rounded-xl bg-white px-5 py-4 shadow-xl">
-              <p className="text-xl font-black">+12.5%</p>
-              <p className="text-xs text-black/50">Engagement</p>
-            </div>
-          </div>
+          <HeroVisual />
 
         </div>
       </section>
@@ -324,11 +336,7 @@ export default async function Home() {
       <section className="px-6 pb-20 lg:px-10">
         <div className="mx-auto grid max-w-[1280px] overflow-hidden rounded-3xl bg-[#080d16] lg:grid-cols-2">
 
-          <div className="flex min-h-[360px] items-center justify-center bg-black/20">
-            <span className="text-sm text-white/30">
-              Raelo Content Visual
-            </span>
-          </div>
+          <CalendarVisual />
 
           <div className="flex flex-col justify-center p-10 text-white lg:p-16">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ed1c24]">
@@ -467,9 +475,7 @@ export default async function Home() {
                 key={audience.title}
                 className="overflow-hidden rounded-2xl bg-white/5"
               >
-                <div className="flex h-40 items-center justify-center bg-white/10 text-sm text-white/20">
-                  Image
-                </div>
+                <AudienceArt audience={audience.title} />
 
                 <div className="p-6">
                   <h3 className="font-bold">{audience.title}</h3>
@@ -489,11 +495,7 @@ export default async function Home() {
       <section>
         <div className="mx-auto grid max-w-[1280px] items-center gap-12 px-6 py-20 lg:grid-cols-2 lg:px-10 lg:py-24">
 
-          <div className="flex min-h-[380px] items-center justify-center rounded-3xl bg-black/5">
-            <span className="text-sm text-black/30">
-              Raelo Content Image
-            </span>
-          </div>
+          <PortalVisual />
 
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ed1c24]">
@@ -577,7 +579,7 @@ export default async function Home() {
           </div>
 
           <div className="grid gap-x-10 md:grid-cols-2">
-            {faqs.map((question) => (
+            {faqs.map(({ question, answer }) => (
               <details
                 key={question}
                 className="group border-t border-black/10 py-5"
@@ -590,8 +592,8 @@ export default async function Home() {
                   </span>
                 </summary>
 
-                <p className="mt-4 text-sm leading-6 text-black/50">
-                  More information about this will be available here.
+                <p className="mt-4 text-sm leading-6 text-black/60">
+                  {answer}
                 </p>
               </details>
             ))}
@@ -624,12 +626,16 @@ export default async function Home() {
             <a href="#home">Home</a>
             <a href="#how-it-works">How It Works</a>
             <a href="#packages">Packages</a>
-            <a href="#results">Results</a>
+            <a href="#results">Who It&apos;s For</a>
             <a href="#faq">FAQ</a>
+            <Link href="/affiliate">Affiliates</Link>
+            <Link href="/terms">Terms</Link>
+            <Link href="/privacy">Privacy</Link>
+            <Link href="/refunds">Refunds</Link>
           </nav>
 
           <p className="text-xs text-white/30">
-            © 2026 Raelo. All rights reserved.
+            © {new Date().getFullYear()} Twin Kreative Limited. All rights reserved.
           </p>
 
         </div>

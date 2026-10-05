@@ -1,12 +1,17 @@
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireStaff } from "@/lib/auth";
+import { batchFileCounts } from "@/lib/content";
+import { schema } from "@/lib/db";
+import { isUuid } from "@/lib/format";
 import { signBrandAssetUrl } from "@/lib/brand-assets";
 import { clientLabel } from "@/lib/admin/subscriptions";
 import { formatDate, formatMoney } from "@/lib/format";
-import type { OnboardingResponse, Profile } from "@/lib/supabase/database.types";
+import type { OnboardingResponse, Profile } from "@/lib/db/types";
 import { AssignForm } from "@/components/admin/assign-form";
+import { GrantSubscriptionForm } from "@/components/admin/grant-subscription-form";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { NewBatchForm } from "@/components/admin/new-batch-form";
 import { AdminPageHeader, EmptyState, Panel, StatusBadge, Table, Td, Th } from "@/components/admin/ui";
@@ -25,46 +30,94 @@ function BriefRow({ label, value }: { label: string; value?: string | null }) {
 
 export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase, profile: me } = await requireStaff(`/admin/clients/${id}`);
+  const { asUser, profile: me } = await requireStaff(`/admin/clients/${id}`);
   const isAdmin = me.role === "admin";
+  if (!isUuid(id)) notFound();
 
-  // RLS: team members only see clients assigned to them.
-  const { data: client } = await supabase.from("profiles").select("*").eq("id", id).eq("role", "client").maybeSingle<Profile>();
-  if (!client) notFound();
+  const { profiles, subscriptions, onboarding_responses, content_batches, orders: ord, invoices: inv, activity_events, packages: pkgs } = schema;
 
-  const [{ data: subs }, { data: brief }, { data: batches }, { data: orders }, { data: invoices }, { data: activity }, { data: staff }] =
-    await Promise.all([
-      supabase
-        .from("subscriptions")
-        .select("id, status, started_at, expires_at, auto_renew, renewal_failures, created_at, packages(name, price, currency), subscription_assignments(id, role, profile_id, profiles!subscription_assignments_profile_id_fkey(full_name, email))")
-        .eq("user_id", id)
-        .neq("status", "pending")
-        .order("created_at", { ascending: false }),
-      supabase.from("onboarding_responses").select("*").eq("user_id", id).maybeSingle<OnboardingResponse>(),
-      supabase
-        .from("content_batches")
-        .select("id, title, status, published_at, updated_at, subscription_id, content_items(count), subscriptions!inner(user_id)")
-        .eq("subscriptions.user_id", id)
-        .order("updated_at", { ascending: false }),
+  const data = await asUser(async (tx) => {
+    // RLS: team members only see clients assigned to them.
+    const [client] = (await tx
+      .select()
+      .from(profiles)
+      .where(and(eq(profiles.id, id), eq(profiles.role, "client")))) as Profile[];
+    if (!client) return null;
+
+    const [subs, [brief], batches, orders, invoices, activity, staff, packages] = await Promise.all([
+      tx.query.subscriptions.findMany({
+        where: and(eq(subscriptions.user_id, id), ne(subscriptions.status, "pending")),
+        orderBy: [desc(subscriptions.created_at)],
+        columns: { id: true, status: true, started_at: true, expires_at: true, auto_renew: true, renewal_failures: true, complimentary: true, created_at: true },
+        with: {
+          package: { columns: { name: true, price: true, currency: true } },
+          subscription_assignments: {
+            columns: { id: true, role: true, profile_id: true },
+            with: { profile_profile_id: { columns: { full_name: true, email: true } } },
+          },
+        },
+      }),
+      tx.select().from(onboarding_responses).where(eq(onboarding_responses.user_id, id)) as Promise<OnboardingResponse[]>,
+      tx
+        .select({
+          id: content_batches.id,
+          title: content_batches.title,
+          status: content_batches.status,
+          published_at: content_batches.published_at,
+          updated_at: content_batches.updated_at,
+          subscription_id: content_batches.subscription_id,
+        })
+        .from(content_batches)
+        .innerJoin(subscriptions, eq(subscriptions.id, content_batches.subscription_id))
+        .where(eq(subscriptions.user_id, id))
+        .orderBy(desc(content_batches.updated_at)),
       isAdmin
-        ? supabase.from("orders").select("id, order_number, status, kind, amount, currency, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(20)
-        : Promise.resolve({ data: null }),
+        ? tx
+            .select({ id: ord.id, order_number: ord.order_number, status: ord.status, kind: ord.kind, amount: ord.amount, currency: ord.currency, created_at: ord.created_at })
+            .from(ord)
+            .where(eq(ord.user_id, id))
+            .orderBy(desc(ord.created_at))
+            .limit(20)
+        : Promise.resolve(null),
       isAdmin
-        ? supabase.from("invoices").select("id, invoice_number, total, currency, status, issued_at").eq("user_id", id).order("issued_at", { ascending: false }).limit(20)
-        : Promise.resolve({ data: null }),
+        ? tx
+            .select({ id: inv.id, invoice_number: inv.invoice_number, total: inv.total, currency: inv.currency, status: inv.status, issued_at: inv.issued_at })
+            .from(inv)
+            .where(eq(inv.user_id, id))
+            .orderBy(desc(inv.issued_at))
+            .limit(20)
+        : Promise.resolve(null),
       isAdmin
-        ? supabase.from("activity_events").select("id, event_type, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(15)
-        : Promise.resolve({ data: null }),
+        ? tx
+            .select({ id: activity_events.id, event_type: activity_events.event_type, created_at: activity_events.created_at })
+            .from(activity_events)
+            .where(eq(activity_events.user_id, id))
+            .orderBy(desc(activity_events.created_at))
+            .limit(15)
+        : Promise.resolve(null),
       isAdmin
-        ? supabase.from("profiles").select("id, full_name, email, role").in("role", ["admin", "account_manager", "designer"]).eq("is_active", true).order("full_name")
-        : Promise.resolve({ data: null }),
+        ? tx
+            .select({ id: profiles.id, full_name: profiles.full_name, email: profiles.email, role: profiles.role })
+            .from(profiles)
+            .where(and(inArray(profiles.role, ["admin", "account_manager", "designer"]), eq(profiles.is_active, true)))
+            .orderBy(asc(profiles.full_name))
+        : Promise.resolve(null),
+      isAdmin
+        ? tx.select({ id: pkgs.id, name: pkgs.name }).from(pkgs).where(eq(pkgs.active, true)).orderBy(asc(pkgs.sort_order))
+        : Promise.resolve(null),
     ]);
+    const fileCounts = await batchFileCounts(tx, batches.map((b) => b.id));
+    return { client, subs, brief, batches, orders, invoices, activity, staff, packages, fileCounts };
+  });
 
-  const logoUrl = await signBrandAssetUrl(supabase, brief?.logo_path);
+  if (!data) notFound();
+  const { client, subs, brief, batches, orders, invoices, activity, staff, packages, fileCounts } = data;
+
+  const logoUrl = await signBrandAssetUrl(brief?.logo_path);
   const handles = (brief?.social_handles ?? {}) as Record<string, string>;
   const platforms = Array.isArray(brief?.social_platforms) ? (brief!.social_platforms as string[]) : [];
   const members = (staff ?? []).map((s) => ({ id: s.id, name: s.full_name ?? s.email ?? "Team member", role: s.role as "admin" | "designer" | "account_manager" }));
-  const workable = (subs ?? []).filter((s) => s.status === "active" || s.status === "paused");
+  const workable = subs.filter((s) => s.status === "active" || s.status === "paused");
 
   return (
     <>
@@ -72,17 +125,23 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
       <AdminPageHeader title={clientLabel(client)} description={`${client.full_name ?? ""} · ${client.email}${client.phone ? ` · ${client.phone}` : ""} · joined ${formatDate(client.created_at)}`} />
 
       <Panel title="Subscriptions">
-        {subs?.length ? (
+        {isAdmin && packages?.length ? (
+          <div className="mb-4 border-b border-black/5 pb-4">
+            <GrantSubscriptionForm clientId={client.id} packages={packages} />
+          </div>
+        ) : null}
+        {subs.length ? (
           <div className="divide-y divide-black/5">
             {subs.map((sub) => {
-              const pkg = sub.packages as unknown as { name: string; price: number; currency: string } | null;
-              const assignments = (sub.subscription_assignments ?? []) as unknown as { id: string; role: string; profiles: { full_name: string | null; email: string } | null }[];
+              const pkg = sub.package;
+              const assignments = sub.subscription_assignments.map((a) => ({ ...a, profiles: a.profile_profile_id }));
               return (
                 <div key={sub.id} className="space-y-3 py-4 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-center gap-3 text-sm">
                     <span className="font-bold">{pkg?.name}</span>
                     {pkg && <span className="text-black/50">{formatMoney(pkg.price, pkg.currency)}/mo</span>}
                     <StatusBadge status={sub.status} />
+                    {sub.complimentary && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">Free plan</span>}
                     <span className="text-black/60">
                       {formatDate(sub.started_at)} → {formatDate(sub.expires_at)} · auto-renew {sub.auto_renew ? "on" : "off"}
                       {sub.renewal_failures > 0 && <span className="text-red-600"> · {sub.renewal_failures} failed renewal attempt(s)</span>}
@@ -111,7 +170,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             })}
           </div>
         ) : (
-          <EmptyState>No paid subscriptions.</EmptyState>
+          <EmptyState>No subscriptions yet.{isAdmin && " Use “Give free plan” to activate one without payment."}</EmptyState>
         )}
       </Panel>
 
@@ -155,17 +214,17 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
       <Panel title="Content">
         {workable.length > 0 && (
           <div className="mb-4">
-            <NewBatchForm subscriptions={workable.map((s) => ({ id: s.id, label: (s.packages as unknown as { name: string } | null)?.name ?? "Subscription" }))} defaultSubscriptionId={workable.length === 1 ? workable[0].id : undefined} />
+            <NewBatchForm subscriptions={workable.map((s) => ({ id: s.id, label: s.package?.name ?? "Subscription" }))} defaultSubscriptionId={workable.length === 1 ? workable[0].id : undefined} />
           </div>
         )}
-        {batches?.length ? (
+        {batches.length ? (
           <ul className="divide-y divide-black/5 text-sm">
             {batches.map((b) => (
               <li key={b.id}>
                 <Link href={`/admin/content/${b.id}`} className="flex items-center justify-between gap-4 py-2 hover:text-[#ed1c24]">
                   <span className="font-semibold">{b.title}</span>
                   <span className="flex items-center gap-3 text-black/50">
-                    {(b.content_items as unknown as { count: number }[])[0]?.count ?? 0} files
+                    {fileCounts.get(b.id) ?? 0} files
                     <StatusBadge status={b.status} />
                   </span>
                 </Link>

@@ -1,48 +1,62 @@
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 
 import { requireProfile } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db, schema } from "@/lib/db";
 import { PageHeader } from "@/components/portal/page-header";
 import { SubscriptionActions } from "@/components/portal/subscription-actions";
 
 export const metadata: Metadata = { title: "Billing" };
 
 export default async function BillingPage() {
-  const { supabase, profile } = await requireProfile("/portal/billing");
+  const { asUser, profile } = await requireProfile("/portal/billing");
+  const { subscriptions: subs, packages, invoices: inv, payment_methods } = schema;
 
-  const [{ data: subscriptions }, { data: invoices }] = await Promise.all([
-    supabase
-      .from("subscriptions")
-      .select(
-        "id, status, started_at, expires_at, auto_renew, payment_method_id, renewal_failures, packages(name, price, currency)",
-      )
-      .eq("user_id", profile.id)
-      .in("status", ["active", "paused", "expired"])
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("invoices")
-      .select("id, invoice_number, total, currency, issued_at, status")
-      .eq("user_id", profile.id)
-      .order("issued_at", { ascending: false }),
-  ]);
+  const { subscriptions, invoices } = await asUser(async (tx) => {
+    const [subscriptions, invoices] = await Promise.all([
+      tx
+        .select({
+          id: subs.id,
+          status: subs.status,
+          started_at: subs.started_at,
+          expires_at: subs.expires_at,
+          auto_renew: subs.auto_renew,
+          payment_method_id: subs.payment_method_id,
+          renewal_failures: subs.renewal_failures,
+          complimentary: subs.complimentary,
+          package_name: packages.name,
+          price: packages.price,
+          currency: packages.currency,
+        })
+        .from(subs)
+        .innerJoin(packages, eq(packages.id, subs.package_id))
+        .where(and(eq(subs.user_id, profile.id), inArray(subs.status, ["active", "paused", "expired"])))
+        .orderBy(desc(subs.created_at)),
+      tx
+        .select({ id: inv.id, invoice_number: inv.invoice_number, total: inv.total, currency: inv.currency, issued_at: inv.issued_at, status: inv.status })
+        .from(inv)
+        .where(eq(inv.user_id, profile.id))
+        .orderBy(desc(inv.issued_at)),
+    ]);
+    return { subscriptions, invoices };
+  });
 
-  // Card details are server-only (no client RLS on payment_methods); read
+  // Card details are server-only (no RLS access to payment_methods); read
   // just the display columns for this user's cards.
-  const methodIds = (subscriptions ?? [])
+  const methodIds = subscriptions
     .map((sub) => sub.payment_method_id)
     .filter((id): id is string => Boolean(id));
-  const { data: methods } = methodIds.length
-    ? await createAdminClient()
-        .from("payment_methods")
-        .select("id, brand, card_type, last4")
-        .eq("user_id", profile.id)
-        .in("id", methodIds)
-    : { data: [] };
+  const methods = methodIds.length
+    ? await db
+        .select({ id: payment_methods.id, brand: payment_methods.brand, card_type: payment_methods.card_type, last4: payment_methods.last4 })
+        .from(payment_methods)
+        .where(and(eq(payment_methods.user_id, profile.id), inArray(payment_methods.id, methodIds)))
+    : [];
 
   const cardLabel = (id: string | null) => {
-    const method = methods?.find((m) => m.id === id);
+    const method = methods.find((m) => m.id === id);
     if (!method) return null;
     const brand = method.brand || method.card_type || "Card";
     return `${brand.charAt(0).toUpperCase()}${brand.slice(1)} •••• ${method.last4}`;
@@ -54,14 +68,10 @@ export default async function BillingPage() {
 
       <section className="rounded-2xl bg-white p-6 shadow-sm">
         <h2 className="font-bold">Subscriptions</h2>
-        {subscriptions?.length ? (
+        {subscriptions.length ? (
           <ul className="mt-2 divide-y divide-black/5">
             {subscriptions.map((sub) => {
-              const pkg = sub.packages as unknown as {
-                name: string;
-                price: number;
-                currency: string;
-              } | null;
+              const pkg = { name: sub.package_name, price: sub.price, currency: sub.currency };
               const card = cardLabel(sub.payment_method_id);
               const autoRenewing = sub.auto_renew && Boolean(card);
               return (
@@ -82,7 +92,9 @@ export default async function BillingPage() {
                       ? `Ended ${formatDate(sub.expires_at)}`
                       : autoRenewing
                         ? `Renews automatically on ${formatDate(sub.expires_at)} using ${card}`
-                        : `Paid until ${formatDate(sub.expires_at)}`}
+                        : sub.complimentary
+                          ? `Complimentary access until ${formatDate(sub.expires_at)}`
+                          : `Paid until ${formatDate(sub.expires_at)}`}
                   </p>
                   {sub.renewal_failures > 0 && sub.status === "active" && (
                     <p className="text-red-600">
@@ -115,7 +127,7 @@ export default async function BillingPage() {
 
       <section className="rounded-2xl bg-white p-6 shadow-sm">
         <h2 className="font-bold">Invoices</h2>
-        {invoices?.length ? (
+        {invoices.length ? (
           <ul className="mt-2 divide-y divide-black/5">
             {invoices.map((invoice) => (
               <li

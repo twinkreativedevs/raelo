@@ -1,6 +1,8 @@
+import { count as countRows, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 
 import { requireStaff } from "@/lib/auth";
+import { schema } from "@/lib/db";
 import { AdminPageHeader, EmptyState, Pagination, Panel, Table, Td, Th, inputClass } from "@/components/admin/ui";
 
 export const metadata = { title: "Activity log" };
@@ -8,19 +10,27 @@ export const metadata = { title: "Activity log" };
 const PAGE_SIZE = 50;
 
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const { supabase } = await requireStaff("/admin/activity", ["admin"]);
+  const { asUser } = await requireStaff("/admin/activity", ["admin"]);
   const params = await searchParams;
   if (params.view === "messages") return <MessagesLog page={Math.max(1, Number(params.page) || 1)} />;
   const type = params.type && /^[a-z_]{1,60}$/.test(params.type) ? params.type : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
-  let query = supabase
-    .from("activity_events")
-    .select("id, event_type, metadata, created_at, user_id, profiles(full_name, email)", { count: "exact" });
-  if (type) query = query.eq("event_type", type);
-  const { data: events, count } = await query
-    .order("created_at", { ascending: false })
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  const { activity_events } = schema;
+  const where = type ? eq(activity_events.event_type, type) : undefined;
+  const [events, [{ n: count }]] = await asUser((tx) =>
+    Promise.all([
+      tx.query.activity_events.findMany({
+        where,
+        orderBy: [desc(activity_events.created_at)],
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        columns: { id: true, event_type: true, metadata: true, created_at: true, user_id: true },
+        with: { profile: { columns: { full_name: true, email: true } } },
+      }),
+      tx.select({ n: countRows() }).from(activity_events).where(where),
+    ]),
+  );
 
   return (
     <>
@@ -32,13 +42,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
         <Link href="/admin/activity" className="h-9 px-2 text-sm leading-9 text-black/50">Reset</Link>
       </form>
       <Panel>
-        {events?.length ? (
+        {events.length ? (
           <>
             <Table>
               <thead><tr><Th>When</Th><Th>Event</Th><Th>User</Th><Th>Details</Th></tr></thead>
               <tbody>
                 {events.map((e) => {
-                  const user = e.profiles as unknown as { full_name: string | null; email: string } | null;
+                  const user = e.profile;
                   return (
                     <tr key={e.id}>
                       <Td className="whitespace-nowrap text-black/60">{new Date(e.created_at).toLocaleString("en-NG")}</Td>
@@ -50,7 +60,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                 })}
               </tbody>
             </Table>
-            <Pagination page={page} pageSize={PAGE_SIZE} total={count ?? 0} basePath="/admin/activity" params={{ type }} />
+            <Pagination page={page} pageSize={PAGE_SIZE} total={count} basePath="/admin/activity" params={{ type }} />
           </>
         ) : (
           <EmptyState>No events.</EmptyState>
@@ -75,19 +85,26 @@ function ViewTabs({ active }: { active: "events" | "messages" }) {
 }
 
 async function MessagesLog({ page }: { page: number }) {
-  const { supabase } = await requireStaff("/admin/activity", ["admin"]);
-  const { data: rows, count } = await supabase
-    .from("notification_log")
-    .select("id, event, channel, recipient, status, error, created_at", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  const { asUser } = await requireStaff("/admin/activity", ["admin"]);
+  const log = schema.notification_log;
+  const [rows, [{ n: count }]] = await asUser((tx) =>
+    Promise.all([
+      tx
+        .select({ id: log.id, event: log.event, channel: log.channel, recipient: log.recipient, status: log.status, error: log.error, created_at: log.created_at })
+        .from(log)
+        .orderBy(desc(log.created_at))
+        .limit(PAGE_SIZE)
+        .offset((page - 1) * PAGE_SIZE),
+      tx.select({ n: countRows() }).from(log),
+    ]),
+  );
 
   return (
     <>
       <AdminPageHeader title="Activity log" description="Every email and SMS the system tried to send." />
       <ViewTabs active="messages" />
       <Panel>
-        {rows?.length ? (
+        {rows.length ? (
           <>
             <Table>
               <thead><tr><Th>When</Th><Th>Event</Th><Th>Channel</Th><Th>To</Th><Th>Result</Th></tr></thead>
@@ -106,7 +123,7 @@ async function MessagesLog({ page }: { page: number }) {
                 ))}
               </tbody>
             </Table>
-            <Pagination page={page} pageSize={PAGE_SIZE} total={count ?? 0} basePath="/admin/activity" params={{ view: "messages" }} />
+            <Pagination page={page} pageSize={PAGE_SIZE} total={count} basePath="/admin/activity" params={{ view: "messages" }} />
           </>
         ) : (
           <EmptyState>No messages sent yet.</EmptyState>
