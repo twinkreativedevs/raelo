@@ -9,6 +9,9 @@ A checklist for launching Raelo as a standalone site.
 - [ ] **Supabase Auth → URL configuration:** Site URL = your domain; add
       `<site>/auth/confirm` to the redirect URLs. Set up custom SMTP (Resend
       works) so sign-up, invite and reset emails come from your domain.
+- [ ] **Google sign-in:** create a Google OAuth client and enable the Google
+      provider in Supabase (steps in README → Sign in with Google). Publish
+      the OAuth consent screen so it isn't limited to test users.
 - [ ] **Hosting** (e.g. Vercel): deploy and set every variable in
       `.env.example`:
   - `NEXT_PUBLIC_SITE_URL`: your domain

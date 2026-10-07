@@ -45,6 +45,23 @@ workspace and admin, all in one Next.js project backed by Supabase.
 - Email links land on `/auth/confirm`, which supports both the default
   (`?code=`) and custom (`?token_hash=&type=`) template styles.
 
+### Sign in with Google
+
+The login and sign-up pages have a "Continue with Google" button. Google
+accounts are created on first use, with the name copied from Google; they
+have no phone number until the client adds one under Account.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+   configure the OAuth consent screen, then create an **OAuth client ID**
+   (type: Web application).
+2. Under **Authorized redirect URIs** add
+   `https://<project-ref>.supabase.co/auth/v1/callback` (shown in Supabase
+   under **Authentication → Sign In / Providers → Google**).
+3. In that Supabase Google provider screen, enable Google and paste the
+   client ID and secret.
+4. Make sure `<site>/auth/confirm` is in the Supabase redirect URLs (above);
+   Google sign-in returns there.
+
 ### Paystack
 
 - Checkout sends customers to Paystack and back to `/checkout/verify`.

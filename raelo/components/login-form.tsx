@@ -16,6 +16,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { safeNextPath } from "@/lib/redirect";
+import {
+  AuthDivider,
+  GoogleSignInButton,
+} from "@/components/google-sign-in-button";
 
 export function LoginForm({
   className,
@@ -60,7 +64,9 @@ export function LoginForm({
             Enter your email below to login to your account
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-6">
+          <GoogleSignInButton next={destination} label="Continue with Google" />
+          <AuthDivider />
           <form onSubmit={handleLogin}>
             <div className="flex flex-col gap-6">
               <div className="grid gap-2">
