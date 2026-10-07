@@ -5,6 +5,7 @@ import { randomBytes } from "crypto";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 
+import { googleConfigured } from "@/lib/auth-providers";
 import { pool } from "@/lib/db";
 import { sendAccountEmail } from "@/lib/notifications";
 
@@ -43,6 +44,17 @@ export const auth = betterAuth({
       await sendAccountEmail("reset_password", { email: user.email, name: user.name, userId: user.id }, { url });
     },
   },
+  // Google accounts go through the same "user" insert, so the trigger
+  // creates their profile.
+  socialProviders: googleConfigured
+    ? {
+        google: {
+          clientId: process.env.GOOGLE_CLIENT_ID as string,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+          prompt: "select_account",
+        },
+      }
+    : undefined,
   emailVerification: {
     sendOnSignUp: emailConfigured,
     autoSignInAfterVerification: true,

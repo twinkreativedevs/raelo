@@ -1,3 +1,4 @@
+import { googleConfigured } from "@/lib/auth-providers";
 import { LoginForm } from "@/components/login-form";
 
 export default async function Page({
@@ -15,7 +16,7 @@ export default async function Page({
             Password saved. Sign in with your new password.
           </p>
         )}
-        <LoginForm next={next} />
+        <LoginForm next={next} googleEnabled={googleConfigured} />
       </div>
     </div>
   );

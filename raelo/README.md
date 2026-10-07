@@ -66,6 +66,25 @@ Migrations are plain SQL in `db/migrations/`, applied once each by
 `npm run db:migrate` (tracked in `schema_migrations`). After adding one,
 run `npm run db:pull` to regenerate the typed schema in `lib/db/schema.ts`.
 
+### Sign in with Google
+
+Optional. When `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set, the
+login and sign-up pages show a "Continue with Google" button. Accounts are
+created on first use with the name from Google (the `user` trigger creates
+the client profile); they have no phone number until the client adds one
+under Account. If an account with the same email already exists, Google
+signs into it only when that account's email is confirmed; otherwise the
+person is sent to the error page and should sign in with their password.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+   configure the OAuth consent screen, then create an **OAuth client ID**
+   (type: Web application).
+2. **Authorized JavaScript origins:** your site, e.g. `https://raelo.ng`
+   (and `http://localhost:3000` for local dev).
+3. **Authorized redirect URIs:** `<NEXT_PUBLIC_SITE_URL>/api/auth/callback/google`
+   (and `http://localhost:3000/api/auth/callback/google`).
+4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` and redeploy.
+
 ### Paystack
 
 - Checkout sends customers to Paystack and back to `/checkout/verify`.

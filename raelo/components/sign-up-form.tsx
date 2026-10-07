@@ -16,12 +16,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { safeNextPath } from "@/lib/redirect";
+import {
+  AuthDivider,
+  GoogleSignInButton,
+} from "@/components/google-sign-in-button";
 
 export function SignUpForm({
   className,
   next,
+  googleEnabled = false,
   ...props
-}: React.ComponentPropsWithoutRef<"div"> & { next?: string }) {
+}: React.ComponentPropsWithoutRef<"div"> & {
+  next?: string;
+  googleEnabled?: boolean;
+}) {
   const destination = safeNextPath(next);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -77,7 +85,13 @@ export function SignUpForm({
           <CardTitle className="text-2xl">Sign up</CardTitle>
           <CardDescription>Create a new account</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-6">
+          {googleEnabled && (
+            <>
+              <GoogleSignInButton next={destination} label="Sign up with Google" />
+              <AuthDivider />
+            </>
+          )}
           <form onSubmit={handleSignUp}>
             <div className="flex flex-col gap-6">
               <div className="grid gap-2">

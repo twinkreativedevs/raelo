@@ -64,6 +64,15 @@ have access.
 - [ ] Optional: `GROQ_API_KEY` for the chat assistant, then enable it in
       Admin → Settings → AI assistant.
 
+### Optional: Sign in with Google
+
+- [ ] Create a Google OAuth client (steps in README → Sign in with Google)
+      with redirect URI `https://<domain>/api/auth/callback/google`.
+- [ ] Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Vercel and
+      redeploy; the button appears on the login and sign-up pages.
+- [ ] **Publish** the OAuth consent screen, otherwise only the test users
+      you list in Google can sign in.
+
 ### 5. Legal pages
 
 - [ ] Review `/terms`, `/privacy` and `/refunds` (in `app/terms`,
