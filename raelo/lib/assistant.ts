@@ -1,7 +1,10 @@
 import "server-only";
 
+import { asc, eq } from "drizzle-orm";
+
+import { db, schema } from "@/lib/db";
 import { formatMoney } from "@/lib/format";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getSettingValue } from "@/lib/settings";
 
 // Public-site AI assistant backed by Groq's OpenAI-compatible API. The key
 // (GROQ_API_KEY) stays on the server; the browser only talks to
@@ -18,8 +21,7 @@ export interface AssistantConfig {
 export const DEFAULT_MODEL = "llama-3.3-70b-versatile";
 
 export async function getAssistantConfig(): Promise<AssistantConfig> {
-  const { data } = await createAdminClient().from("settings").select("value").eq("key", "ai_assistant").maybeSingle();
-  const v = (data?.value ?? {}) as Record<string, unknown>;
+  const v = await getSettingValue("ai_assistant");
   return {
     enabled: v.enabled === true,
     model: String(v.model || DEFAULT_MODEL),
@@ -31,7 +33,7 @@ export async function getAssistantConfig(): Promise<AssistantConfig> {
 
 /** Widget config for the landing page, or null if it shouldn't show. */
 export async function getPublicAssistant() {
-  if (!process.env.GROQ_API_KEY || !process.env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  if (!process.env.GROQ_API_KEY || !process.env.DATABASE_URL) return null;
   try {
     const config = await getAssistantConfig();
     return config.enabled ? config : null;
@@ -42,15 +44,18 @@ export async function getPublicAssistant() {
 
 /** Everything the assistant knows: live packages plus the admin's notes. */
 export async function buildSystemPrompt(config: AssistantConfig) {
-  const admin = createAdminClient();
-  const [{ data: packages }, { data: brand }] = await Promise.all([
-    admin.from("packages").select("name, slug, description, price, currency, billing_period, deliverables").eq("active", true).order("sort_order"),
-    admin.from("settings").select("value").eq("key", "brand").maybeSingle(),
+  const p = schema.packages;
+  const [packages, b] = await Promise.all([
+    db
+      .select({ name: p.name, slug: p.slug, description: p.description, price: p.price, currency: p.currency, billing_period: p.billing_period, deliverables: p.deliverables })
+      .from(p)
+      .where(eq(p.active, true))
+      .orderBy(asc(p.sort_order)),
+    getSettingValue<Record<string, string>>("brand"),
   ]);
-  const b = (brand?.value ?? {}) as Record<string, string>;
   const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
 
-  const packageLines = (packages ?? []).map((p) => {
+  const packageLines = packages.map((p) => {
     const items = Array.isArray(p.deliverables) ? (p.deliverables as string[]).join("; ") : "";
     return `- ${p.name}: ${formatMoney(Number(p.price), p.currency)} ${p.billing_period.replace("_", " ")}. ${p.description ?? ""} Includes: ${items}. Sign up: ${site}/checkout/${p.slug}`;
   });

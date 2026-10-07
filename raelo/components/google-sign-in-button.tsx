@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 
 /**
- * Signs in or signs up with Google. Supabase creates the account on first
- * use, and the handle_new_user trigger copies Google's `full_name` into
- * public.profiles. Google returns to /auth/confirm with a `code`, which
- * finishes the session and forwards to `next`.
+ * Signs in or signs up with Google (Better Auth). The first sign-in creates
+ * the "user" row, and its trigger creates the client profile with Google's
+ * name. Google returns to /api/auth/callback/google, which sets the session
+ * and forwards to `next`.
  */
 export function GoogleSignInButton({
   next,
@@ -25,17 +25,15 @@ export function GoogleSignInButton({
     setIsLoading(true);
     setError(null);
 
-    const { error } = await createClient().auth.signInWithOAuth({
+    const { error } = await authClient.signIn.social({
       provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/confirm?next=${encodeURIComponent(next)}`,
-        queryParams: { prompt: "select_account" },
-      },
+      callbackURL: next,
+      errorCallbackURL: "/auth/error",
     });
 
     // On success the browser is already leaving for Google.
     if (error) {
-      setError(error.message);
+      setError(error.message ?? "Couldn't connect to Google.");
       setIsLoading(false);
     }
   };

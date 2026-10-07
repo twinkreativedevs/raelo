@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -6,7 +7,9 @@ import { cookies } from "next/headers";
 import { formatPrice } from "@/lib/packages";
 import { REF_COOKIE, referralDiscount, resolveReferral } from "@/lib/affiliates";
 
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUserId } from "@/lib/auth";
+import { db, schema } from "@/lib/db";
+import { paystackConfigured } from "@/lib/paystack";
 import { CheckoutButton } from "@/components/checkout/checkout-button";
 
 export default async function CheckoutPage({
@@ -15,27 +18,30 @@ export default async function CheckoutPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const supabase = await createClient();
-
-  const { data: pkg } = await supabase
-    .from("packages")
-    .select("id, name, slug, description, price, currency, billing_period, deliverables")
-    .eq("slug", slug)
-    .eq("active", true)
-    .maybeSingle();
+  const { packages } = schema;
+  const [pkg] = await db
+    .select({
+      id: packages.id,
+      name: packages.name,
+      slug: packages.slug,
+      description: packages.description,
+      price: packages.price,
+      currency: packages.currency,
+      billing_period: packages.billing_period,
+      deliverables: packages.deliverables,
+    })
+    .from(packages)
+    .where(and(eq(packages.slug, slug), eq(packages.active, true)));
 
   if (!pkg) {
     notFound();
   }
 
-  const { data } = await supabase.auth.getClaims();
-  const isSignedIn = Boolean(data?.claims);
+  const userId = await getSessionUserId();
+  const isSignedIn = Boolean(userId);
 
   // Same rules as initCheckout, so the price shown is the price charged.
-  const referral = await resolveReferral(
-    (await cookies()).get(REF_COOKIE)?.value,
-    (data?.claims?.sub as string | undefined) ?? null,
-  );
+  const referral = await resolveReferral((await cookies()).get(REF_COOKIE)?.value, userId);
   const discount = referral ? referralDiscount(Number(pkg.price), referral.discountPercent) : 0;
 
   const deliverables = Array.isArray(pkg.deliverables)
@@ -88,7 +94,11 @@ export default async function CheckoutPage({
           )}
 
           <div className="mt-10">
-            {isSignedIn ? (
+            {!paystackConfigured() ? (
+              <p className="rounded-2xl bg-black/5 px-5 py-4 text-center text-sm text-black/70">
+                Online payment opens soon. To start now, contact us and we&apos;ll set up your plan.
+              </p>
+            ) : isSignedIn ? (
               <CheckoutButton packageId={pkg.id} packageName={pkg.name} />
             ) : (
               <div className="space-y-3">

@@ -1,16 +1,19 @@
 "use server";
 
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { logActivity } from "@/lib/activity";
 import { affiliateSettings, REF_CODE_PATTERN } from "@/lib/affiliates";
 import { afterResponse, notifyAdmins } from "@/lib/notifications";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUserId } from "@/lib/auth";
+import { db, schema } from "@/lib/db";
 
 // Affiliates can't write their own rows (RLS: admin only), so these actions
-// authenticate the user and then write with the service role, touching only
-// whitelisted columns.
+// authenticate the user and then write with the owner connection, touching
+// only whitelisted columns.
+
+const { affiliates, profiles } = schema;
 
 const str = (fd: FormData, key: string, max = 200) => String(fd.get(key) ?? "").trim().slice(0, max);
 
@@ -24,14 +27,9 @@ function payoutFields(fd: FormData) {
   };
 }
 
-async function currentUserId() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  return data?.claims?.sub as string | undefined;
-}
 
 export async function applyAffiliate(formData: FormData) {
-  const userId = await currentUserId();
+  const userId = await getSessionUserId();
   if (!userId) return { error: "Please sign in to apply." };
 
   const code = str(formData, "code", 32).toLowerCase();
@@ -41,12 +39,12 @@ export async function applyAffiliate(formData: FormData) {
   const payout = payoutFields(formData);
   if ("error" in payout) return payout;
 
-  const admin = createAdminClient();
-  const { data: existing } = await admin.from("affiliates").select("id").eq("user_id", userId).maybeSingle();
+  const [existing] = await db.select({ id: affiliates.id }).from(affiliates).where(eq(affiliates.user_id, userId));
   if (existing) return { error: "You've already applied." };
 
   const defaults = await affiliateSettings();
-  const { error } = await admin.from("affiliates").insert({
+  try {
+    await db.insert(affiliates).values({
     user_id: userId,
     code,
     status: "pending",
@@ -54,13 +52,13 @@ export async function applyAffiliate(formData: FormData) {
     commission_percent: defaults.defaultCommission,
     application_note: str(formData, "application_note", 1000) || null,
     ...payout,
-  });
-
-  if (error) {
-    return { error: error.code === "23505" ? "That code is taken. Try another." : "Couldn't submit your application." };
+    });
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code;
+    return { error: code === "23505" ? "That code is taken. Try another." : "Couldn't submit your application." };
   }
 
-  const { data: profile } = await admin.from("profiles").select("full_name, email").eq("id", userId).single();
+  const [profile] = await db.select({ full_name: profiles.full_name, email: profiles.email }).from(profiles).where(eq(profiles.id, userId));
   await logActivity(userId, "affiliate_applied", { code });
   await afterResponse(() =>
     notifyAdmins("affiliate_applied", "affiliate_applied", {
@@ -74,20 +72,20 @@ export async function applyAffiliate(formData: FormData) {
 }
 
 export async function updatePayoutDetails(formData: FormData) {
-  const userId = await currentUserId();
+  const userId = await getSessionUserId();
   if (!userId) return { error: "Please sign in again." };
 
   const payout = payoutFields(formData);
   if ("error" in payout) return payout;
 
-  const { data, error } = await createAdminClient()
-    .from("affiliates")
-    .update(payout)
-    .eq("user_id", userId)
-    .select("id")
-    .maybeSingle();
+  const updated = await db
+    .update(affiliates)
+    .set(payout)
+    .where(eq(affiliates.user_id, userId))
+    .returning({ id: affiliates.id })
+    .catch(() => []);
 
-  if (error || !data) return { error: "Couldn't save your payout details." };
+  if (!updated.length) return { error: "Couldn't save your payout details." };
   revalidatePath("/affiliate");
   return { ok: true as const };
 }

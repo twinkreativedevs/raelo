@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,8 +24,12 @@ import {
 export function SignUpForm({
   className,
   next,
+  googleEnabled = false,
   ...props
-}: React.ComponentPropsWithoutRef<"div"> & { next?: string }) {
+}: React.ComponentPropsWithoutRef<"div"> & {
+  next?: string;
+  googleEnabled?: boolean;
+}) {
   const destination = safeNextPath(next);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -38,7 +42,6 @@ export function SignUpForm({
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
@@ -49,20 +52,25 @@ export function SignUpForm({
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      // Name and phone are copied into public.profiles by the
+      // handle_new_user trigger. Never add role or other privileged fields
+      // here: everything sent at sign-up is client-controlled.
+      const { data, error } = await authClient.signUp.email({
         email,
         password,
-        options: {
-          // /auth/confirm finishes the session, then forwards to `next`.
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=${encodeURIComponent(destination)}`,
-          // Copied into public.profiles by the handle_new_user trigger.
-          // Never put role or other privileged fields here: user metadata
-          // is fully client-controlled.
-          data: { full_name: fullName.trim(), phone: phone.trim() },
-        },
+        name: fullName.trim(),
+        phone: phone.trim(),
+        // Where the email confirmation link lands once confirmed.
+        callbackURL: destination,
       });
-      if (error) throw error;
-      router.push("/auth/sign-up-success");
+      if (error) throw new Error(error.message ?? "Couldn't create your account.");
+      // Signed in straight away when email confirmation is off.
+      if (data?.token) {
+        router.push(destination);
+        router.refresh();
+      } else {
+        router.push("/auth/sign-up-success");
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -78,8 +86,12 @@ export function SignUpForm({
           <CardDescription>Create a new account</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
-          <GoogleSignInButton next={destination} label="Sign up with Google" />
-          <AuthDivider />
+          {googleEnabled && (
+            <>
+              <GoogleSignInButton next={destination} label="Sign up with Google" />
+              <AuthDivider />
+            </>
+          )}
           <form onSubmit={handleSignUp}>
             <div className="flex flex-col gap-6">
               <div className="grid gap-2">
@@ -143,6 +155,11 @@ export function SignUpForm({
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Creating an account..." : "Sign up"}
               </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                By creating an account you agree to our{" "}
+                <Link href="/terms" className="underline underline-offset-4">Terms</Link> and{" "}
+                <Link href="/privacy" className="underline underline-offset-4">Privacy policy</Link>.
+              </p>
             </div>
             <div className="mt-4 text-center text-sm">
               Already have an account?{" "}

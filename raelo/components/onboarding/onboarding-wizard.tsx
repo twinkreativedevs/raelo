@@ -12,7 +12,7 @@ import {
 } from "@/components/brand/brief-fields";
 import { LogoUpload } from "@/components/brand/logo-upload";
 import { briefFormState } from "@/lib/brand-brief-state";
-import type { OnboardingResponse } from "@/lib/supabase/database.types";
+import type { OnboardingResponse } from "@/lib/db/types";
 import {
   completeOnboarding,
   saveOnboardingProgress,

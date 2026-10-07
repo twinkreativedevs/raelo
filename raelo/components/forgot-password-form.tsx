@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -26,18 +26,17 @@ export function ForgotPasswordForm({
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
     try {
-      // The url which will be included in the email. This URL needs to be configured in your redirect URLs in the Supabase dashboard at https://supabase.com/dashboard/project/_/auth/url-configuration
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        // Goes through /auth/confirm so the recovery session is established
-        // before the update-password form loads.
-        redirectTo: `${window.location.origin}/auth/confirm?next=/auth/update-password`,
+      // The emailed link opens /auth/update-password?token=… . The response
+      // is the same whether or not the email has an account.
+      const { error } = await authClient.requestPasswordReset({
+        email,
+        redirectTo: "/auth/update-password",
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message ?? "Couldn't send the reset email.");
       setSuccess(true);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");

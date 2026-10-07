@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,8 +24,12 @@ import {
 export function LoginForm({
   className,
   next,
+  googleEnabled = false,
   ...props
-}: React.ComponentPropsWithoutRef<"div"> & { next?: string }) {
+}: React.ComponentPropsWithoutRef<"div"> & {
+  next?: string;
+  googleEnabled?: boolean;
+}) {
   const destination = safeNextPath(next);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,16 +39,18 @@ export function LoginForm({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) throw error;
+      const { error } = await authClient.signIn.email({ email, password });
+      if (error) {
+        throw new Error(
+          error.status === 403
+            ? "Please confirm your email first. We've sent you a new link."
+            : error.message ?? "Couldn't sign you in.",
+        );
+      }
       // Return to wherever login was requested from (e.g. a checkout page).
       router.push(destination);
       router.refresh();
@@ -65,8 +71,12 @@ export function LoginForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
-          <GoogleSignInButton next={destination} label="Continue with Google" />
-          <AuthDivider />
+          {googleEnabled && (
+            <>
+              <GoogleSignInButton next={destination} label="Continue with Google" />
+              <AuthDivider />
+            </>
+          )}
           <form onSubmit={handleLogin}>
             <div className="flex flex-col gap-6">
               <div className="grid gap-2">

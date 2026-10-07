@@ -1,5 +1,5 @@
-// Client-side limits for logo uploads. The brand-assets bucket enforces the
-// same limits server-side (migration 0015).
+// Limits for logo uploads. The browser checks them for quick feedback;
+// app/api/uploads/route.ts enforces them in the upload token.
 export const LOGO_MAX_BYTES = 5 * 1024 * 1024;
 
 export const LOGO_EXTENSIONS: Record<string, string> = {

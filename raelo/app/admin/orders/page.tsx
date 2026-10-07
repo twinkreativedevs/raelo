@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { requireStaff } from "@/lib/auth";
-import { ordersQuery, parseOrderFilters } from "@/lib/admin/orders";
+import { listOrders, parseOrderFilters } from "@/lib/admin/orders";
 import { formatDate, formatMoney } from "@/lib/format";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { AdminPageHeader, EmptyState, Pagination, Panel, StatusBadge, Table, Td, Th, inputClass } from "@/components/admin/ui";
@@ -16,14 +16,14 @@ export default async function OrdersPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const { supabase } = await requireStaff("/admin/orders", ["admin"]);
+  const { asUser } = await requireStaff("/admin/orders", ["admin"]);
   const params = await searchParams;
   const filters = parseOrderFilters(params);
   const page = Math.max(1, Number(params.page) || 1);
 
-  const { data: orders, count } = await ordersQuery(supabase, filters)
-    .order("created_at", { ascending: false })
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  const { rows: orders, count } = await asUser((tx) =>
+    listOrders(tx, filters, { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+  );
 
   const exportQuery = new URLSearchParams(
     Object.entries(filters).filter(([, v]) => v) as [string, string][],
@@ -55,7 +55,7 @@ export default async function OrdersPage({
       </form>
 
       <Panel>
-        {orders?.length ? (
+        {orders.length ? (
           <>
             <Table>
               <thead>
@@ -66,9 +66,9 @@ export default async function OrdersPage({
               </thead>
               <tbody>
                 {orders.map((order) => {
-                  const client = order.profiles as unknown as { full_name: string | null; email: string; company_name: string | null } | null;
-                  const pkg = order.packages as unknown as { name: string } | null;
-                  const invoice = (order.invoices as unknown as { id: string; invoice_number: string; status: string }[] | null)?.[0];
+                  const client = order.profile;
+                  const pkg = order.package;
+                  const invoice = order.invoices[0];
                   return (
                     <tr key={order.id}>
                       <Td className="font-semibold">
@@ -109,7 +109,7 @@ export default async function OrdersPage({
                 })}
               </tbody>
             </Table>
-            <Pagination page={page} pageSize={PAGE_SIZE} total={count ?? 0} basePath="/admin/orders" params={{ ...filters }} />
+            <Pagination page={page} pageSize={PAGE_SIZE} total={count} basePath="/admin/orders" params={{ ...filters }} />
           </>
         ) : (
           <EmptyState>No orders match these filters.</EmptyState>

@@ -1,30 +1,26 @@
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { currentUser } from "@/lib/auth";
+import { schema } from "@/lib/db";
+import type { OnboardingResponse } from "@/lib/db/types";
 import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
 import { signBrandAssetUrl } from "@/lib/brand-assets";
 
 export default async function OnboardingPage() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  const user = data?.claims;
+  const auth = await currentUser();
+  if (!auth) redirect("/auth/login?next=/onboarding");
 
-  if (!user) {
-    redirect("/auth/login?next=/onboarding");
-  }
-
-  const { data: existing } = await supabase
-    .from("onboarding_responses")
-    .select("*")
-    .eq("user_id", user.sub as string)
-    .maybeSingle();
+  const [existing] = (await auth.asUser((tx) =>
+    tx.select().from(schema.onboarding_responses).where(eq(schema.onboarding_responses.user_id, auth.profile.id)),
+  )) as OnboardingResponse[];
 
   // Already done this before: edits happen on the portal's Brand page.
   if (existing?.completed) {
     redirect("/portal/brand");
   }
 
-  const logoUrl = await signBrandAssetUrl(supabase, existing?.logo_path);
+  const logoUrl = await signBrandAssetUrl(existing?.logo_path);
 
   return (
     <main className="min-h-screen bg-white text-black">
@@ -41,7 +37,7 @@ export default async function OnboardingPage() {
 
         <div className="mt-10">
           <OnboardingWizard
-            userId={user.sub as string}
+            userId={auth.profile.id}
             initialData={existing ?? null}
             logoUrl={logoUrl}
           />

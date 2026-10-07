@@ -1,6 +1,10 @@
 import "server-only";
 
-import { createAdminClient } from "@/lib/supabase/admin";
+import { eq } from "drizzle-orm";
+
+import { db, schema } from "@/lib/db";
+
+const { affiliates, commissions, settings } = schema;
 
 // Referral attribution. The proxy stores `?ref=<code>` in a cookie as
 // "<code>.<timestamp>" (last click wins). Checkout honours it only while
@@ -19,7 +23,7 @@ export interface Referral {
 }
 
 export async function affiliateSettings() {
-  const { data } = await createAdminClient().from("settings").select("value").eq("key", "affiliate").maybeSingle();
+  const [data] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, "affiliate"));
   const v = (data?.value ?? {}) as Record<string, number>;
   return {
     unlockThreshold: Number(v.unlock_threshold ?? 50),
@@ -42,11 +46,16 @@ export async function resolveReferral(
   const setAt = Number(stamp);
   if (!Number.isFinite(setAt) || Date.now() - setAt > cookieDays * 86_400_000) return null;
 
-  const { data: affiliate } = await createAdminClient()
-    .from("affiliates")
-    .select("id, user_id, code, discount_percent, status")
-    .eq("code", code)
-    .maybeSingle();
+  const [affiliate] = await db
+    .select({
+      id: affiliates.id,
+      user_id: affiliates.user_id,
+      code: affiliates.code,
+      discount_percent: affiliates.discount_percent,
+      status: affiliates.status,
+    })
+    .from(affiliates)
+    .where(eq(affiliates.code, code));
 
   if (!affiliate || affiliate.status !== "approved") return null;
   if (buyerId && affiliate.user_id === buyerId) return null;
@@ -77,21 +86,24 @@ export async function recordCommission(order: {
 }) {
   if (!order.affiliate_id || order.kind !== "new") return null;
 
-  const admin = createAdminClient();
-  const { data: affiliate } = await admin
-    .from("affiliates")
-    .select("id, user_id, status, commission_percent")
-    .eq("id", order.affiliate_id)
-    .maybeSingle();
+  const [affiliate] = await db
+    .select({
+      id: affiliates.id,
+      user_id: affiliates.user_id,
+      status: affiliates.status,
+      commission_percent: affiliates.commission_percent,
+    })
+    .from(affiliates)
+    .where(eq(affiliates.id, order.affiliate_id));
   if (!affiliate || affiliate.status !== "approved") return null;
 
   const rate = Number(affiliate.commission_percent);
   const amount = Math.round((Number(order.amount) * rate) / 100);
 
-  const { data, error } = await admin
-    .from("commissions")
-    .upsert(
-      {
+  try {
+    const [created] = await db
+      .insert(commissions)
+      .values({
         affiliate_id: affiliate.id,
         order_id: order.id,
         base_amount: order.amount,
@@ -99,15 +111,12 @@ export async function recordCommission(order: {
         amount,
         currency: order.currency,
         status: "earned",
-      },
-      { onConflict: "order_id", ignoreDuplicates: true },
-    )
-    .select("id, amount")
-    .maybeSingle();
-
-  if (error) {
-    console.error("recordCommission failed", order.id, error.message);
+      })
+      .onConflictDoNothing({ target: commissions.order_id })
+      .returning({ id: commissions.id, amount: commissions.amount });
+    return created ? { ...created, affiliateUserId: affiliate.user_id } : null;
+  } catch (error) {
+    console.error("recordCommission failed", order.id, error);
     return null;
   }
-  return data ? { ...data, affiliateUserId: affiliate.user_id } : null;
 }

@@ -1,9 +1,12 @@
+import { desc, eq } from "drizzle-orm";
 import Link from "next/link";
 
 import { requireStaff } from "@/lib/auth";
+import { schema } from "@/lib/db";
+import { getSettingValue } from "@/lib/settings";
 import { formatDate, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { AffiliateBalance } from "@/lib/supabase/database.types";
+import type { AffiliateBalance } from "@/lib/db/types";
 import { PayoutRecordForm, RatesForm } from "@/components/admin/affiliate-forms";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { AdminPageHeader, EmptyState, Panel, StatusBadge } from "@/components/admin/ui";
@@ -14,24 +17,28 @@ export const metadata = { title: "Affiliates" };
 const TABS = ["pending", "approved", "suspended", "rejected"] as const;
 
 export default async function AffiliatesAdminPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
-  const { supabase } = await requireStaff("/admin/affiliates", ["admin"]);
+  const { asUser } = await requireStaff("/admin/affiliates", ["admin"]);
   const requested = (await searchParams).status;
   const status = TABS.find((t) => t === requested) ?? "approved";
 
-  const [{ data: affiliates }, { data: balances }, { data: counts }, { data: threshold }] = await Promise.all([
-    supabase
-      .from("affiliates")
-      .select("*, profiles!affiliates_user_id_fkey(full_name, email, phone)")
-      .eq("status", status)
-      .order("created_at", { ascending: false }),
-    supabase.from("affiliate_balances").select("*"),
-    supabase.from("affiliates").select("status"),
-    supabase.from("settings").select("value").eq("key", "affiliate").maybeSingle(),
+  const [[affiliates, balances, counts], threshold] = await Promise.all([
+    asUser((tx) =>
+      Promise.all([
+        tx.query.affiliates.findMany({
+          where: eq(schema.affiliates.status, status),
+          orderBy: [desc(schema.affiliates.created_at)],
+          with: { profile_user_id: { columns: { full_name: true, email: true, phone: true } } },
+        }),
+        tx.select().from(schema.affiliate_balances),
+        tx.select({ status: schema.affiliates.status }).from(schema.affiliates),
+      ]),
+    ),
+    getSettingValue<{ unlock_threshold?: number }>("affiliate"),
   ]);
 
-  const balanceFor = (id: string) => (balances as AffiliateBalance[] | null)?.find((b) => b.affiliate_id === id);
-  const countFor = (s: string) => (counts ?? []).filter((c) => c.status === s).length;
-  const unlockAt = Number((threshold?.value as { unlock_threshold?: number } | null)?.unlock_threshold ?? 50);
+  const balanceFor = (id: string) => (balances as unknown as AffiliateBalance[]).find((b) => b.affiliate_id === id);
+  const countFor = (s: string) => counts.filter((c) => c.status === s).length;
+  const unlockAt = Number(threshold.unlock_threshold ?? 50);
 
   return (
     <>
@@ -49,7 +56,7 @@ export default async function AffiliatesAdminPage({ searchParams }: { searchPara
         <Panel><EmptyState>No {status} affiliates.</EmptyState></Panel>
       ) : (
         affiliates.map((a) => {
-          const person = a.profiles as unknown as { full_name: string | null; email: string; phone: string | null } | null;
+          const person = a.profile_user_id;
           const bal = balanceFor(a.id);
           const unpaid = Number(bal?.unpaid_total ?? 0);
           return (

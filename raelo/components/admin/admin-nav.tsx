@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-import type { TeamRole } from "@/lib/supabase/database.types";
+import type { TeamRole } from "@/lib/db/types";
 
 const LINKS: { href: string; label: string; roles: TeamRole[] }[] = [
   { href: "/admin", label: "Dashboard", roles: ["admin", "account_manager", "designer"] },

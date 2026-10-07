@@ -7,60 +7,83 @@ monthly package, pay with Paystack, complete a brand brief, and download
 professionally designed content from a private portal.
 
 A standalone web app: marketing site, checkout, client portal, team
-workspace and admin, all in one Next.js project backed by Supabase.
+workspace and admin, all in one Next.js project backed by Neon Postgres.
 
 ## Stack
 
 - [Next.js 16](https://nextjs.org) (App Router, server actions, `proxy.ts`)
-- [Supabase](https://supabase.com): Postgres, Auth, Storage, Row Level Security
-- Tailwind CSS + shadcn/ui
-- Paystack for payments
-- TypeScript
+- [Neon](https://neon.tech) Postgres, queried with [Drizzle ORM](https://orm.drizzle.team);
+  Row Level Security decides what each signed-in user can see
+- [Better Auth](https://www.better-auth.com): email + password sign-in, stored in the same database
+- [Vercel Blob](https://vercel.com/docs/vercel-blob) (private store) for content files and logos
+- Paystack for payments, Resend for email, Termii for SMS, Groq for the chat assistant
+- Tailwind CSS + shadcn/ui, TypeScript
 
 ## Getting started
 
-1. Create a Supabase project.
-2. Copy `.env.example` to `.env.local` and fill in every value.
-3. Apply the database schema. Run each file in `supabase/migrations/` **in
-   order** in the Supabase SQL editor (or `supabase db push` if you use the
-   CLI), then run `supabase/seed.sql`.
-4. Install and run:
+Only a database is needed to run the site. Payments, email, SMS, uploads
+and the assistant switch themselves on when their keys are added.
+
+1. Create a Neon project and copy its **pooled** connection string.
+2. Copy `.env.example` to `.env.local` and fill in the **Required** block
+   (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `NEXT_PUBLIC_SITE_URL`, `CRON_SECRET`).
+3. Install, create the tables, and run:
 
    ```bash
    npm install
+   npm run db:migrate   # applies db/migrations in order, then db/seed.sql
    npm run dev
    ```
 
-5. Sign up through the app, then make yourself the first admin in the SQL
-   editor (after that, invite everyone else from **Admin → Team**):
+4. Sign up at `/auth/sign-up`. Without email configured you're signed in
+   straight away.
+5. Make yourself the first admin, then open `/admin` (sign out and in first):
 
-   ```sql
-   update public.profiles set role = 'admin' where email = 'you@example.com';
+   ```bash
+   npm run make-admin -- you@example.com
    ```
 
-### Supabase Auth settings
+   After that, invite everyone else from **Admin → Team**.
 
-- **Authentication → URL Configuration**: set the Site URL to your
-  `NEXT_PUBLIC_SITE_URL` and add `<site>/auth/confirm` to the redirect URLs.
-- Email links land on `/auth/confirm`, which supports both the default
-  (`?code=`) and custom (`?token_hash=&type=`) template styles.
+### Using the portal before payments are connected
+
+Until `PAYSTACK_SECRET_KEY` is set, checkout shows "online payment opens
+soon" instead of a pay button. To give a client account a working plan
+(for a demo, a partner, or your own test account):
+
+- **Admin → Clients → client → Give free plan** (pick a package and 1–12 months), or
+- `npm run grant-plan -- client@example.com growth 3`
+
+Free plans are marked complimentary: no order or invoice, never charged,
+left out of recurring revenue. If the client later pays for a renewal it
+becomes a normal paid subscription. An account is either a client or a
+team member, so use a second email (e.g. `you+client@example.com`) to see
+the client portal yourself.
+
+### Schema changes
+
+Migrations are plain SQL in `db/migrations/`, applied once each by
+`npm run db:migrate` (tracked in `schema_migrations`). After adding one,
+run `npm run db:pull` to regenerate the typed schema in `lib/db/schema.ts`.
 
 ### Sign in with Google
 
-The login and sign-up pages have a "Continue with Google" button. Google
-accounts are created on first use, with the name copied from Google; they
-have no phone number until the client adds one under Account.
+Optional. When `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set, the
+login and sign-up pages show a "Continue with Google" button. Accounts are
+created on first use with the name from Google (the `user` trigger creates
+the client profile); they have no phone number until the client adds one
+under Account. If an account with the same email already exists, Google
+signs into it only when that account's email is confirmed; otherwise the
+person is sent to the error page and should sign in with their password.
 
 1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    configure the OAuth consent screen, then create an **OAuth client ID**
    (type: Web application).
-2. Under **Authorized redirect URIs** add
-   `https://<project-ref>.supabase.co/auth/v1/callback` (shown in Supabase
-   under **Authentication → Sign In / Providers → Google**).
-3. In that Supabase Google provider screen, enable Google and paste the
-   client ID and secret.
-4. Make sure `<site>/auth/confirm` is in the Supabase redirect URLs (above);
-   Google sign-in returns there.
+2. **Authorized JavaScript origins:** your site, e.g. `https://raelo.ng`
+   (and `http://localhost:3000` for local dev).
+3. **Authorized redirect URIs:** `<NEXT_PUBLIC_SITE_URL>/api/auth/callback/google`
+   (and `http://localhost:3000/api/auth/callback/google`).
+4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` and redeploy.
 
 ### Paystack
 
@@ -92,7 +115,10 @@ portal (`/api/invoices/<id>`).
 
 Email goes out through [Resend](https://resend.com) (`RESEND_API_KEY`, sender
 from **Admin → Settings → Email**) and SMS through [Termii](https://termii.com)
-(`TERMII_API_KEY`, `TERMII_BASE_URL`, sender ID in Settings). Each event can be
+(`TERMII_API_KEY`, `TERMII_BASE_URL`, sender ID in Settings). Once Resend is
+set, sign-up asks new users to confirm their email, and password resets and
+team invites are emailed (before that, invite links are shown to the admin
+and, in development, printed to the server console). Each event can be
 switched on/off per channel in **Settings → Notifications**. Every attempt,
 including failures and "skipped: no API key", is listed in **Admin → Activity
 log → Messages**.
@@ -148,11 +174,18 @@ whether the database and required settings are in place.
 
 ## Scripts
 
-| Command         | What it does            |
-| --------------- | ----------------------- |
-| `npm run dev`   | Dev server on :3000     |
-| `npm run build` | Production build        |
-| `npm run lint`  | ESLint                  |
+| Command                                  | What it does                                   |
+| ---------------------------------------- | ---------------------------------------------- |
+| `npm run dev`                            | Dev server on :3000                            |
+| `npm run build`                          | Production build                               |
+| `npm run lint` / `npm run typecheck`     | ESLint / TypeScript                            |
+| `npm run db:migrate`                     | Apply new migrations + seed packages           |
+| `npm run db:pull`                        | Regenerate `lib/db/schema.ts` after a migration |
+| `npm run make-admin -- <email> [role]`   | Promote an account (default: admin)            |
+| `npm run grant-plan -- <email> [slug] [months]` | Give a client a free plan                 |
+
+Scripts read `DATABASE_URL` from `.env.local`. CI (`.github/workflows/ci.yml`)
+runs lint, typecheck, migrations on a fresh Postgres, and the build.
 
 ## Access model
 
@@ -165,18 +198,25 @@ Every table has Row Level Security. In short:
 | `account_manager` | Same as designer, and can publish content batches              |
 | `admin`           | Everything                                                     |
 
-Sensitive writes (activating subscriptions, orders, invoices, the audit log)
-happen only in server code using the service-role key. See
-`supabase/migrations/0007`–`0013` for the exact policies.
+Requests made for a signed-in user run as the database role `raelo_app`
+with `app.user_id` set (`asUser` / `withUser` in `lib/db`), so these
+policies apply exactly as written in `db/migrations/0007`–`0013`. Sensitive
+writes (activating subscriptions, orders, invoices, the audit log) happen
+only in server code on the owner connection, after the user has been
+checked. Files are in a private Blob store: uploads are authorised by
+`/api/uploads`, downloads use short-lived signed links.
 
 ## Project layout
 
 ```
 app/
   page.tsx               Landing page
-  auth/                  Login, sign-up, password reset, email confirm
+  terms/ privacy/ refunds/  Legal pages
+  auth/                  Login, sign-up, password reset / set password
   checkout/[slug]/       Package page + pay button
   checkout/verify/       Paystack callback
+  api/auth/              Better Auth endpoints
+  api/uploads/           Upload tokens for the private Blob store
   api/webhooks/paystack/ Paystack webhook
   api/cron/billing/      Daily renewals + expiry
   api/invoices/[id]/     Invoice PDF download
@@ -189,11 +229,15 @@ app/
   admin/                 Admin + team area (role-aware)
   api/admin/orders.csv/  Orders / revenue CSV export
 lib/
+  db/                    Connection, withUser (RLS), generated schema, domain types
+  better-auth.ts         Sign-in config, invite / set-password links
+  auth.ts                requireProfile / requireStaff / authorize helpers
+  storage.ts             Vercel Blob: signed URLs, reads, deletes
   payments.ts            Payment confirmation, subscription activation, invoices
   renewals.ts            Renewal orders, saved-card charges, billing cycle
   invoice-pdf.ts         Invoice PDF rendering
   packages.ts            Public package list for the landing page
-  content.ts             Signed URLs + file naming for the content bucket
+  content.ts             Preview URLs + file naming for content
   brand-brief.ts         Brief fields + server-side sanitising
   notifications/         Email (Resend) + SMS (Termii) templates and dispatch
   affiliates.ts          Referral attribution, discounts, commissions
@@ -201,12 +245,11 @@ lib/
   reminders.ts           Onboarding / renewal reminders (daily cron)
   paystack.ts            Paystack API calls (server-only)
   activity.ts            Audit log writer (server-only)
-  auth.ts                requireProfile / requireStaff / authorize helpers
   admin/                 Dashboard metrics, order filters, search helpers
-  supabase/              Browser, server, service-role clients + types
-supabase/
-  migrations/            Schema, in order
+db/
+  migrations/            Schema, in order (plain SQL)
   seed.sql               Packages
+scripts/                 migrate, make-admin, grant-plan, schema generation
 docs/
   LAUNCH.md              Go-live checklist
 ```
@@ -222,6 +265,7 @@ docs/
 | 5 | Admin dashboard, then team portal | ✅ |
 | 6 | Notifications (email/SMS), affiliates UI, AI assistant | ✅ |
 | 7 | Go-live: health check, launch checklist | ✅ |
+| 8 | Neon + Better Auth + Vercel Blob; free plans; legal pages; landing visuals; CI | ✅ |
 
 ---
 

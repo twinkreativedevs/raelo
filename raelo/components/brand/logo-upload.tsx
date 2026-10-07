@@ -3,14 +3,15 @@
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
+import { upload } from "@vercel/blob/client";
+
 import { LOGO_EXTENSIONS, LOGO_MAX_BYTES } from "@/lib/logo-upload";
 import { saveLogo } from "@/app/onboarding/actions";
 
 /**
- * Uploads a logo straight from the browser to the private brand-assets
- * bucket (storage RLS only allows the user's own `{userId}/` folder), then
- * records the path on the brief.
+ * Uploads a logo straight from the browser to the private Blob store
+ * (/api/uploads only signs uploads into the user's own
+ * brand-assets/{userId}/ folder), then records the path on the brief.
  */
 export function LogoUpload({
   userId,
@@ -38,12 +39,15 @@ export function LogoUpload({
     }
 
     setStatus("uploading");
-    const path = `${userId}/logo-${Date.now()}.${extension}`;
-    const { error: uploadError } = await createClient()
-      .storage.from("brand-assets")
-      .upload(path, file, { contentType: file.type, upsert: false });
-
-    if (uploadError) {
+    const path = `brand-assets/${userId}/logo-${Date.now()}.${extension}`;
+    try {
+      await upload(path, file, {
+        access: "private",
+        handleUploadUrl: "/api/uploads",
+        clientPayload: JSON.stringify({ kind: "logo" }),
+        contentType: file.type,
+      });
+    } catch {
       setStatus("idle");
       setError("Upload failed. Please try again.");
       return;

@@ -7,12 +7,12 @@ import {
   verifyTransaction,
   type VerifyTransactionResult,
 } from "@/lib/paystack";
-import { createAdminClient } from "@/lib/supabase/admin";
-import type {
-  InvoiceLineItem,
-  Order,
-  OrderStatus,
-} from "@/lib/supabase/database.types";
+import { and, eq, ne } from "drizzle-orm";
+
+import { db, schema } from "@/lib/db";
+import type { InvoiceLineItem, Order, OrderStatus } from "@/lib/db/types";
+
+const { orders, subscriptions, packages, profiles, payment_methods, invoices } = schema;
 
 // Payment confirmation shared by the Paystack callback page
 // (/checkout/verify) and, later, the Paystack webhook. Both can fire for the
@@ -47,8 +47,27 @@ type OrderRow = Pick<
   | "affiliate_id"
 >;
 
-const ORDER_COLUMNS =
-  "id, order_number, user_id, subscription_id, package_id, kind, status, currency, subtotal, discount_amount, amount, paid_at, metadata, affiliate_id";
+const ORDER_COLUMNS = {
+  id: orders.id,
+  order_number: orders.order_number,
+  user_id: orders.user_id,
+  subscription_id: orders.subscription_id,
+  package_id: orders.package_id,
+  kind: orders.kind,
+  status: orders.status,
+  currency: orders.currency,
+  subtotal: orders.subtotal,
+  discount_amount: orders.discount_amount,
+  amount: orders.amount,
+  paid_at: orders.paid_at,
+  metadata: orders.metadata,
+  affiliate_id: orders.affiliate_id,
+};
+
+async function findOrder(where: ReturnType<typeof eq>) {
+  const [row] = await db.select(ORDER_COLUMNS).from(orders).where(where);
+  return (row as OrderRow | undefined) ?? null;
+}
 
 export type ConfirmPaymentResult =
   | { status: "paid"; order: OrderRow }
@@ -89,14 +108,7 @@ function readPeriod(order: OrderRow): OrderPeriod | null {
 export async function confirmOrderPayment(
   reference: string,
 ): Promise<ConfirmPaymentResult> {
-  const admin = createAdminClient();
-
-  const { data: order } = await admin
-    .from("orders")
-    .select(ORDER_COLUMNS)
-    .eq("payment_reference", reference)
-    .maybeSingle<OrderRow>();
-
+  const order = await findOrder(eq(orders.payment_reference, reference));
   if (!order) return { status: "not_found" };
 
   if (order.status === "paid") {
@@ -118,16 +130,14 @@ export async function confirmOrderPayment(
 
   if (verification.status !== "success") {
     const reason = verification.status === "abandoned" ? "abandoned" : "failed";
-    await admin
-      .from("orders")
-      .update({ status: reason satisfies OrderStatus })
-      .eq("id", order.id)
-      .eq("status", "pending");
-    await admin
-      .from("subscriptions")
-      .update({ status: "cancelled" })
-      .eq("id", order.subscription_id)
-      .eq("status", "pending");
+    await db
+      .update(orders)
+      .set({ status: reason satisfies OrderStatus })
+      .where(and(eq(orders.id, order.id), eq(orders.status, "pending")));
+    await db
+      .update(subscriptions)
+      .set({ status: "cancelled" })
+      .where(and(eq(subscriptions.id, order.subscription_id), eq(subscriptions.status, "pending")));
     return { status: "failed", reason };
   }
 
@@ -136,10 +146,7 @@ export async function confirmOrderPayment(
     verification.amount !== toKobo(order.amount) ||
     verification.currency !== order.currency
   ) {
-    await admin
-      .from("orders")
-      .update({ failure_reason: "amount_mismatch" })
-      .eq("id", order.id);
+    await db.update(orders).set({ failure_reason: "amount_mismatch" }).where(eq(orders.id, order.id));
     await logActivity(order.user_id, "payment_amount_mismatch", {
       reference,
       order_id: order.id,
@@ -157,9 +164,9 @@ export async function confirmOrderPayment(
   const period = await computePeriod(order, paidAt);
 
   // Claim: only one concurrent caller gets a row back.
-  const { data: claimed } = await admin
-    .from("orders")
-    .update({
+  const [claimedRow] = await db
+    .update(orders)
+    .set({
       status: "paid",
       paid_at: paidAt.toISOString(),
       paystack_transaction_id: String(verification.id),
@@ -170,17 +177,12 @@ export async function confirmOrderPayment(
         ...period,
       },
     })
-    .eq("id", order.id)
-    .neq("status", "paid")
-    .select(ORDER_COLUMNS)
-    .maybeSingle<OrderRow>();
+    .where(and(eq(orders.id, order.id), ne(orders.status, "paid")))
+    .returning(ORDER_COLUMNS);
+  const claimed = (claimedRow as OrderRow | undefined) ?? null;
 
   if (!claimed) {
-    const { data: current } = await admin
-      .from("orders")
-      .select(ORDER_COLUMNS)
-      .eq("id", order.id)
-      .single<OrderRow>();
+    const current = await findOrder(eq(orders.id, order.id));
     await fulfillOrder(current!);
     return { status: "already_paid", order: current! };
   }
@@ -202,11 +204,13 @@ export async function confirmOrderPayment(
 
 /** Client welcome/renewal message + admin alert for a newly paid order. */
 async function sendPaymentNotifications(order: OrderRow) {
-  const admin = createAdminClient();
-  const [{ data: pkg }, { data: client }, { data: sub }] = await Promise.all([
-    admin.from("packages").select("name").eq("id", order.package_id).single(),
-    admin.from("profiles").select("full_name, company_name, email").eq("id", order.user_id).single(),
-    admin.from("subscriptions").select("expires_at").eq("id", order.subscription_id).single(),
+  const [[pkg], [client], [sub]] = await Promise.all([
+    db.select({ name: packages.name }).from(packages).where(eq(packages.id, order.package_id)),
+    db
+      .select({ full_name: profiles.full_name, company_name: profiles.company_name, email: profiles.email })
+      .from(profiles)
+      .where(eq(profiles.id, order.user_id)),
+    db.select({ expires_at: subscriptions.expires_at }).from(subscriptions).where(eq(subscriptions.id, order.subscription_id)),
   ]);
 
   const data = {
@@ -233,19 +237,12 @@ async function sendPaymentNotifications(order: OrderRow) {
  * renewals stack on top of any time still left on the subscription.
  */
 async function computePeriod(order: OrderRow, paidAt: Date): Promise<OrderPeriod> {
-  const admin = createAdminClient();
-
-  const [{ data: pkg }, { data: subscription }] = await Promise.all([
-    admin
-      .from("packages")
-      .select("billing_period")
-      .eq("id", order.package_id)
-      .single(),
-    admin
-      .from("subscriptions")
-      .select("status, expires_at")
-      .eq("id", order.subscription_id)
-      .single(),
+  const [[pkg], [subscription]] = await Promise.all([
+    db.select({ billing_period: packages.billing_period }).from(packages).where(eq(packages.id, order.package_id)),
+    db
+      .select({ status: subscriptions.status, expires_at: subscriptions.expires_at })
+      .from(subscriptions)
+      .where(eq(subscriptions.id, order.subscription_id)),
   ]);
 
   const months = BILLING_PERIOD_MONTHS[pkg?.billing_period ?? "monthly"] ?? null;
@@ -278,11 +275,7 @@ async function savePaymentMethod(
   const auth = verification.authorization;
   if (!auth?.reusable || !auth.authorization_code) return;
 
-  const admin = createAdminClient();
-  const { data: method, error } = await admin
-    .from("payment_methods")
-    .upsert(
-      {
+  const values = {
         user_id: order.user_id,
         authorization_code: auth.authorization_code,
         signature: auth.signature ?? auth.authorization_code,
@@ -296,34 +289,33 @@ async function savePaymentMethod(
         exp_month: auth.exp_month,
         exp_year: auth.exp_year,
         reusable: true,
-      },
-      { onConflict: "user_id,signature" },
-    )
-    .select("id")
-    .single();
+  };
 
-  if (error || !method) {
-    console.error("savePaymentMethod failed", order.id, error?.message);
+  let methodId: string;
+  try {
+    const [method] = await db
+      .insert(payment_methods)
+      .values(values)
+      .onConflictDoUpdate({ target: [payment_methods.user_id, payment_methods.signature], set: values })
+      .returning({ id: payment_methods.id });
+    methodId = method.id;
+  } catch (error) {
+    console.error("savePaymentMethod failed", order.id, error);
     return;
   }
 
-  await admin
-    .from("subscriptions")
-    .update({ payment_method_id: method.id })
-    .eq("id", order.subscription_id);
+  await db.update(subscriptions).set({ payment_method_id: methodId }).where(eq(subscriptions.id, order.subscription_id));
 }
 
 /** Idempotent: activates/extends the subscription and issues the invoice. */
 async function fulfillOrder(order: OrderRow) {
-  const admin = createAdminClient();
   const period = readPeriod(order);
 
   if (period) {
-    const { data: subscription } = await admin
-      .from("subscriptions")
-      .select("status, started_at, expires_at")
-      .eq("id", order.subscription_id)
-      .single();
+    const [subscription] = await db
+      .select({ status: subscriptions.status, started_at: subscriptions.started_at, expires_at: subscriptions.expires_at })
+      .from(subscriptions)
+      .where(eq(subscriptions.id, order.subscription_id));
 
     if (subscription) {
       const currentEnd = subscription.expires_at
@@ -333,15 +325,17 @@ async function fulfillOrder(order: OrderRow) {
       const expiresAt =
         currentEnd && newEnd && currentEnd > newEnd ? currentEnd : newEnd;
 
-      await admin
-        .from("subscriptions")
-        .update({
+      await db
+        .update(subscriptions)
+        .set({
           status: "active",
           started_at: subscription.started_at ?? period.period_start,
           expires_at: expiresAt ? expiresAt.toISOString() : null,
           renewal_failures: 0,
+          // A paid order turns a complimentary subscription into a paying one.
+          complimentary: false,
         })
-        .eq("id", order.subscription_id);
+        .where(eq(subscriptions.id, order.subscription_id));
     }
   }
 
@@ -363,15 +357,12 @@ async function fulfillOrder(order: OrderRow) {
 }
 
 async function issueInvoice(order: OrderRow) {
-  const admin = createAdminClient();
-
-  const [{ data: pkg }, { data: profile }] = await Promise.all([
-    admin.from("packages").select("name").eq("id", order.package_id).single(),
-    admin
-      .from("profiles")
-      .select("full_name, email, company_name")
-      .eq("id", order.user_id)
-      .single(),
+  const [[pkg], [profile]] = await Promise.all([
+    db.select({ name: packages.name }).from(packages).where(eq(packages.id, order.package_id)),
+    db
+      .select({ full_name: profiles.full_name, email: profiles.email, company_name: profiles.company_name })
+      .from(profiles)
+      .where(eq(profiles.id, order.user_id)),
   ]);
 
   const lineItems: InvoiceLineItem[] = [
@@ -385,8 +376,10 @@ async function issueInvoice(order: OrderRow) {
     },
   ];
 
-  const { error } = await admin.from("invoices").upsert(
-    {
+  try {
+    await db
+      .insert(invoices)
+      .values({
       order_id: order.id,
       user_id: order.user_id,
       currency: order.currency,
@@ -398,9 +391,9 @@ async function issueInvoice(order: OrderRow) {
       billed_to_email: profile?.email ?? null,
       billed_to_company: profile?.company_name ?? null,
       issued_at: order.paid_at ?? new Date().toISOString(),
-    },
-    { onConflict: "order_id", ignoreDuplicates: true },
-  );
-
-  if (error) console.error("issueInvoice failed", order.id, error.message);
+      })
+      .onConflictDoNothing({ target: invoices.order_id });
+  } catch (error) {
+    console.error("issueInvoice failed", order.id, error);
+  }
 }
