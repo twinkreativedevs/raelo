@@ -1,21 +1,18 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { authClient } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+
+import { authClient } from "@/lib/auth-client";
 import { safeNextPath } from "@/lib/redirect";
+import { cn } from "@/lib/utils";
+import {
+  authInputClass,
+  authLabelClass,
+  authPrimaryButtonClass,
+} from "@/components/auth-shell";
 import {
   AuthDivider,
   GoogleSignInButton,
@@ -35,7 +32,7 @@ export function SignUpForm({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [repeatPassword, setRepeatPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -44,12 +41,6 @@ export function SignUpForm({
     e.preventDefault();
     setIsLoading(true);
     setError(null);
-
-    if (password !== repeatPassword) {
-      setError("Passwords do not match");
-      setIsLoading(false);
-      return;
-    }
 
     try {
       // Name and phone are copied into public.profiles by the
@@ -79,100 +70,123 @@ export function SignUpForm({
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">Sign up</CardTitle>
-          <CardDescription>Create a new account</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-6">
-          {googleEnabled && (
-            <>
-              <GoogleSignInButton next={destination} label="Sign up with Google" />
-              <AuthDivider />
-            </>
-          )}
-          <form onSubmit={handleSignUp}>
-            <div className="flex flex-col gap-6">
-              <div className="grid gap-2">
-                <Label htmlFor="full-name">Full name</Label>
-                <Input
-                  id="full-name"
-                  autoComplete="name"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="phone">Phone number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  autoComplete="tel"
-                  placeholder="0803 123 4567"
-                  required
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="repeat-password">Repeat Password</Label>
-                </div>
-                <Input
-                  id="repeat-password"
-                  type="password"
-                  required
-                  value={repeatPassword}
-                  onChange={(e) => setRepeatPassword(e.target.value)}
-                />
-              </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Creating an account..." : "Sign up"}
-              </Button>
-              <p className="text-center text-xs text-muted-foreground">
-                By creating an account you agree to our{" "}
-                <Link href="/terms" className="underline underline-offset-4">Terms</Link> and{" "}
-                <Link href="/privacy" className="underline underline-offset-4">Privacy policy</Link>.
-              </p>
-            </div>
-            <div className="mt-4 text-center text-sm">
-              Already have an account?{" "}
-              <Link
-                href={`/auth/login?next=${encodeURIComponent(destination)}`}
-                className="underline underline-offset-4"
-              >
-                Login
-              </Link>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+    <div className={cn("w-full", className)} {...props}>
+      {googleEnabled && (
+        <>
+          <GoogleSignInButton next={destination} label="Sign up with Google" />
+          <AuthDivider label="or sign up with email" />
+        </>
+      )}
+
+      <form onSubmit={handleSignUp} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="full-name" className={authLabelClass}>
+              Full name
+            </label>
+            <input
+              id="full-name"
+              autoComplete="name"
+              placeholder="Ada Okafor"
+              required
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className={authInputClass}
+            />
+          </div>
+          <div>
+            <label htmlFor="phone" className={authLabelClass}>
+              Phone number
+            </label>
+            <input
+              id="phone"
+              type="tel"
+              autoComplete="tel"
+              placeholder="0803 123 4567"
+              required
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className={authInputClass}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="email" className={authLabelClass}>
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@business.com"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={authInputClass}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="password" className={authLabelClass}>
+            Password
+          </label>
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              placeholder="At least 8 characters"
+              minLength={8}
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={cn(authInputClass, "pr-11")}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-black/40 transition hover:text-black/70"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <p role="alert" className="rounded-xl bg-[#fde8e9] px-3.5 py-2.5 text-sm text-[#a5121a]">
+            {error}
+          </p>
+        )}
+
+        <button type="submit" className={cn(authPrimaryButtonClass, "!mt-6")} disabled={isLoading}>
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+          {isLoading ? "Creating your account…" : "Create account"}
+        </button>
+
+        <p className="text-center text-xs leading-relaxed text-black/45">
+          By creating an account you agree to our{" "}
+          <Link href="/terms" className="font-medium text-black/70 underline underline-offset-2 hover:text-[#ed1c24]">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="font-medium text-black/70 underline underline-offset-2 hover:text-[#ed1c24]">
+            Privacy policy
+          </Link>
+          .
+        </p>
+      </form>
+
+      <p className="mt-8 text-center text-sm text-black/60">
+        Already have an account?{" "}
+        <Link
+          href={`/auth/login?next=${encodeURIComponent(destination)}`}
+          className="font-semibold text-[#ed1c24] hover:underline"
+        >
+          Log in
+        </Link>
+      </p>
     </div>
   );
 }

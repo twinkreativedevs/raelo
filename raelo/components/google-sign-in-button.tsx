@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
 
 /**
  * Signs in or signs up with Google (Better Auth). The first sign-in creates
@@ -39,27 +39,34 @@ export function GoogleSignInButton({
   };
 
   return (
-    <div className="grid gap-2">
-      <Button
+    <div>
+      <button
         type="button"
-        variant="outline"
-        className="w-full"
-        disabled={isLoading}
         onClick={handleClick}
+        disabled={isLoading}
+        className="flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-[#dadce0] bg-white text-[15px] font-semibold text-[#1f1f1f] shadow-sm transition hover:border-[#c6c9cc] hover:bg-[#f8f9fa] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#4285F4]/20 active:bg-[#f1f3f4] disabled:cursor-not-allowed disabled:opacity-70"
       >
-        <GoogleIcon />
-        {isLoading ? "Redirecting to Google..." : label}
-      </Button>
-      {error && <p className="text-sm text-red-500">{error}</p>}
+        {isLoading ? (
+          <Loader2 className="h-5 w-5 animate-spin text-black/50" aria-hidden />
+        ) : (
+          <GoogleIcon />
+        )}
+        {isLoading ? "Opening Google…" : label}
+      </button>
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-[#c4161c]">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
-export function AuthDivider() {
+export function AuthDivider({ label = "or" }: { label?: string }) {
   return (
-    <div className="flex items-center gap-3 text-xs uppercase tracking-widest text-black/40">
+    <div className="my-6 flex items-center gap-4 text-xs font-medium text-black/40">
       <span className="h-px flex-1 bg-black/10" />
-      or
+      {label}
       <span className="h-px flex-1 bg-black/10" />
     </div>
   );
@@ -67,7 +74,7 @@ export function AuthDivider() {
 
 function GoogleIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 shrink-0">
       <path
         fill="#4285F4"
         d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.57-5.17 3.57-8.82Z"
