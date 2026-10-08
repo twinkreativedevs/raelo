@@ -17,6 +17,8 @@ export const user = pgTable("user", {
 	phone: text(),
 	createdAt: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	accountType: text(),
+	companyName: text(),
 }, (table) => [
 	unique("user_email_key").on(table.email),
 ]);
@@ -111,6 +113,14 @@ export const profiles = pgTable("profiles", {
 	phone: text(),
 	avatar_url: text(),
 	is_active: boolean().default(true).notNull(),
+	account_type: text().default('individual').notNull(),
+	job_title: text(),
+	website: text(),
+	industry: text(),
+	team_size: text(),
+	city: text(),
+	country: text(),
+	bio: text(),
 }, (table) => [
 	index("profiles_role_idx").using("btree", table.role.asc().nullsLast().op("text_ops")),
 	foreignKey({
@@ -118,7 +128,8 @@ export const profiles = pgTable("profiles", {
 			foreignColumns: [user.id],
 			name: "profiles_id_fkey"
 		}).onDelete("cascade"),
-	check("profiles_role_check", sql`role = ANY (ARRAY['client'::text, 'admin'::text, 'account_manager'::text, 'designer'::text])`),
+	check("profiles_account_type_check", sql`account_type = ANY (ARRAY['individual'::text, 'organization'::text])`),
+	check("profiles_role_check", sql`role = ANY (ARRAY['client'::text, 'admin'::text, 'account_manager'::text, 'designer'::text, 'content_creator'::text, 'email_marketer'::text, 'social_media_manager'::text])`),
 ]);
 
 export const subscription_assignments = pgTable("subscription_assignments", {
@@ -146,7 +157,7 @@ export const subscription_assignments = pgTable("subscription_assignments", {
 			name: "subscription_assignments_assigned_by_fkey"
 		}).onDelete("set null"),
 	unique("subscription_assignments_subscription_id_profile_id_key").on(table.subscription_id, table.profile_id),
-	check("subscription_assignments_role_check", sql`role = ANY (ARRAY['account_manager'::text, 'designer'::text])`),
+	check("subscription_assignments_role_check", sql`role = ANY (ARRAY['account_manager'::text, 'designer'::text, 'content_creator'::text, 'email_marketer'::text, 'social_media_manager'::text])`),
 ]);
 
 export const activity_events = pgTable("activity_events", {

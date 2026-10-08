@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireStaff } from "@/lib/auth";
+import { PUBLISH_ROLES } from "@/lib/roles";
 import { schema } from "@/lib/db";
 import { clientLabel } from "@/lib/admin/subscriptions";
 import { signPreviewUrls } from "@/lib/content";
@@ -42,7 +43,7 @@ export default async function BatchEditorPage({ params }: { params: Promise<{ ba
   const items = batch.content_items;
   const previews = await signPreviewUrls(items);
   const sub = batch.subscription;
-  const canPublish = profile.role === "admin" || profile.role === "account_manager";
+  const canPublish = PUBLISH_ROLES.includes(profile.role);
   const canDelete = profile.role === "admin" || batch.status === "draft";
 
   return (

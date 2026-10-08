@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 
 import { assignTeamMember } from "@/app/admin/clients/actions";
+import type { TeamRole } from "@/lib/db/types";
+import { ASSIGNMENT_ROLES, ROLE_LABELS } from "@/lib/roles";
 import { inputClass } from "@/components/admin/ui";
 
 export function AssignForm({
@@ -10,7 +12,7 @@ export function AssignForm({
   members,
 }: {
   subscriptionId: string;
-  members: { id: string; name: string; role: "designer" | "account_manager" | "admin" }[];
+  members: { id: string; name: string; role: TeamRole }[];
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +33,11 @@ export function AssignForm({
         <option value="" disabled>Assign team member…</option>
         {members.map((m) =>
           m.role === "admin" ? (
-            ["designer", "account_manager"].map((r) => (
-              <option key={`${m.id}:${r}`} value={`${m.id}:${r}`}>{m.name} (admin, as {r.replace("_", " ")})</option>
+            ASSIGNMENT_ROLES.map((r) => (
+              <option key={`${m.id}:${r}`} value={`${m.id}:${r}`}>{m.name} (admin, as {ROLE_LABELS[r].toLowerCase()})</option>
             ))
           ) : (
-            <option key={m.id} value={`${m.id}:${m.role}`}>{m.name} ({m.role.replace("_", " ")})</option>
+            <option key={m.id} value={`${m.id}:${m.role}`}>{m.name} ({ROLE_LABELS[m.role].toLowerCase()})</option>
           ),
         )}
       </select>

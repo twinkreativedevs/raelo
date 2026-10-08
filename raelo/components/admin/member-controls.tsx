@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 import { updateTeamMember } from "@/app/admin/team/actions";
+import { ROLE_LABELS, TEAM_ROLES } from "@/lib/roles";
 import { inputClass } from "@/components/admin/ui";
 
 export function MemberControls({ id, role, isActive }: { id: string; role: string; isActive: boolean }) {
@@ -25,9 +26,9 @@ export function MemberControls({ id, role, isActive }: { id: string; role: strin
         className={inputClass}
         onChange={(e) => run({ role: e.target.value }, e.target.value === "client" ? "Remove from the team? They keep a client login and lose all assignments." : undefined)}
       >
-        <option value="designer">Designer</option>
-        <option value="account_manager">Account manager</option>
-        <option value="admin">Admin</option>
+        {TEAM_ROLES.map((r) => (
+          <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+        ))}
         <option value="client">Remove from team</option>
       </select>
       <button

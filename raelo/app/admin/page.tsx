@@ -1,13 +1,14 @@
 import { desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
+import { AlertTriangle, CreditCard, FilePen, PencilRuler, TrendingUp, Users, Wallet } from "lucide-react";
 
 import { requireStaff } from "@/lib/auth";
 import { batchFileCounts } from "@/lib/content";
 import { schema } from "@/lib/db";
 import { dashboardStats, revenueByMonth } from "@/lib/admin/metrics";
 import { formatDate, formatMoney } from "@/lib/format";
+import { ROLE_LABELS, roleLabel } from "@/lib/roles";
 import { RevenueChart } from "@/components/admin/revenue-chart";
-import { SearchBox } from "@/components/admin/search-box";
 import {
   AdminPageHeader,
   EmptyState,
@@ -44,24 +45,32 @@ export default async function AdminDashboard() {
 
   return (
     <>
-      <AdminPageHeader title="Dashboard">
-        <SearchBox />
+      <AdminPageHeader
+        title={`Welcome back${profile.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}`}
+        description="Here's how Raelo is doing today."
+      >
+        <Link href="/admin/team" className="btn-ghost">
+          <Users className="h-4 w-4" /> Team
+        </Link>
+        <Link href="/admin/content" className="btn-primary">
+          <PencilRuler className="h-4 w-4" /> Content
+        </Link>
       </AdminPageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Revenue this month" value={formatMoney(stats.revenueThisMonth, "NGN")} hint={`${stats.ordersThisMonth} paid orders`} href="/admin/revenue" />
-        <StatCard label="Monthly recurring" value={formatMoney(stats.mrr, "NGN")} hint="From paying active subscriptions" />
-        <StatCard label="Active subscriptions" value={stats.activeSubscriptions} hint={`${stats.newClientsThisMonth} new clients this month`} href="/admin/clients" />
-        <StatCard label="Drafts to publish" value={stats.draftBatches} hint="Content batches in draft" href="/admin/content?status=draft" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard tone="dark" icon={Wallet} label="Revenue this month" value={formatMoney(stats.revenueThisMonth, "NGN")} hint={`${stats.ordersThisMonth} paid orders`} href="/admin/revenue" />
+        <StatCard icon={TrendingUp} label="Monthly recurring" value={formatMoney(stats.mrr, "NGN")} hint="From paying active subscriptions" />
+        <StatCard icon={Users} label="Active subscriptions" value={stats.activeSubscriptions} hint={`${stats.newClientsThisMonth} new clients this month`} href="/admin/clients" />
+        <StatCard icon={FilePen} label="Drafts to publish" value={stats.draftBatches} hint="Content batches in draft" href="/admin/content?status=draft" />
       </div>
 
       {(stats.awaitingBrief > 0 || stats.failedRenewals > 0) && (
         <div className="grid gap-4 sm:grid-cols-2">
           {stats.awaitingBrief > 0 && (
-            <StatCard label="Waiting on brand brief" value={stats.awaitingBrief} hint="Active clients who haven't finished onboarding" href="/admin/clients?filter=no_brief" />
+            <StatCard tone="alert" icon={AlertTriangle} label="Waiting on brand brief" value={stats.awaitingBrief} hint="Active clients who haven't finished onboarding" href="/admin/clients?filter=no_brief" />
           )}
           {stats.failedRenewals > 0 && (
-            <StatCard label="Failed renewals" value={stats.failedRenewals} hint="Active subscriptions whose card was declined" href="/admin/clients?filter=failed_renewal" />
+            <StatCard tone="alert" icon={CreditCard} label="Failed renewals" value={stats.failedRenewals} hint="Active subscriptions whose card was declined" href="/admin/clients?filter=failed_renewal" />
           )}
         </div>
       )}
@@ -108,7 +117,7 @@ export default async function AdminDashboard() {
   );
 }
 
-/** Designers and account managers: their assigned clients and open drafts. */
+/** Everyone except admins: their assigned clients and open drafts. */
 async function TeamDashboard() {
   const { asUser, profile } = await requireStaff("/admin");
 
@@ -148,7 +157,22 @@ async function TeamDashboard() {
 
   return (
     <>
-      <AdminPageHeader title={`Hi ${profile.full_name?.split(" ")[0] ?? "there"}`} description="Clients assigned to you and content in progress." />
+      <AdminPageHeader
+        title={`Hi ${profile.full_name?.split(" ")[0] ?? "there"}`}
+        description={`${ROLE_LABELS[profile.role]} · clients assigned to you and content in progress.`}
+      />
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard tone="dark" icon={Users} label="Your clients" value={subs.length} hint="Assigned to you" />
+        <StatCard
+          icon={AlertTriangle}
+          tone={subs.some((s) => !briefDone.has(s.user_id)) ? "alert" : "default"}
+          label="Briefs waiting"
+          value={subs.filter((s) => !briefDone.has(s.user_id)).length}
+          hint="Clients yet to share their brand"
+        />
+        <StatCard icon={FilePen} label="Drafts in progress" value={drafts.length} hint="Not yet published" href="/admin/content" />
+      </div>
 
       <Panel title="Your clients">
         {subs.length ? (
@@ -163,7 +187,7 @@ async function TeamDashboard() {
                   <Td>{sub.package?.name}</Td>
                   <Td><StatusBadge status={sub.status} /></Td>
                   <Td>{briefDone.has(sub.user_id) ? "Complete" : <span className="text-amber-700">Waiting</span>}</Td>
-                  <Td className="capitalize text-black/60">{sub.assignedAs.replace("_", " ")}</Td>
+                  <Td className="text-black/60">{roleLabel(sub.assignedAs)}</Td>
                   <Td className="text-right"><Link href={`/admin/clients/${sub.user_id}`} className="font-semibold text-[#ed1c24]">Open →</Link></Td>
                 </tr>
               ))}

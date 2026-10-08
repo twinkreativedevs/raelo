@@ -3,8 +3,19 @@
 // add the narrower literal types the database enforces with CHECK
 // constraints, for use in components and server code.
 
-export type ProfileRole = "client" | "admin" | "account_manager" | "designer";
+export type ProfileRole =
+  | "client"
+  | "admin"
+  | "account_manager"
+  | "designer"
+  | "content_creator"
+  | "email_marketer"
+  | "social_media_manager";
 export type TeamRole = Exclude<ProfileRole, "client">;
+/** Roles a team member can hold on a client's subscription. */
+export type AssignmentRole = Exclude<TeamRole, "admin">;
+
+export type AccountType = "individual" | "organization";
 
 export type SubscriptionStatus =
   | "pending"
@@ -38,6 +49,14 @@ export interface Profile {
   phone: string | null;
   avatar_url: string | null;
   role: ProfileRole;
+  account_type: AccountType;
+  job_title: string | null;
+  website: string | null;
+  industry: string | null;
+  team_size: string | null;
+  city: string | null;
+  country: string | null;
+  bio: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -111,7 +130,7 @@ export interface SubscriptionAssignment {
   id: string;
   subscription_id: string;
   profile_id: string;
-  role: "account_manager" | "designer";
+  role: AssignmentRole;
   assigned_by: string | null;
   created_at: string;
 }

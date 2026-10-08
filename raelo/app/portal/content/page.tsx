@@ -54,7 +54,7 @@ export default async function ContentPage() {
       <PageHeader eyebrow="Content" title="Your content" />
 
       {!batches?.length ? (
-        <div className="rounded-2xl bg-white p-10 text-center shadow-sm">
+        <div className="card p-10 text-center">
           <h2 className="font-bold">No content yet</h2>
           <p className="mt-2 text-sm text-black/60">
             Your team is working on it. We&apos;ll email and text you as soon
@@ -70,7 +70,7 @@ export default async function ContentPage() {
               <Link
                 key={batch.id}
                 href={`/portal/content/${batch.id}`}
-                className="group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md"
+                className="group card overflow-hidden transition hover:shadow-md"
               >
                 <div className="flex aspect-[4/3] items-center justify-center bg-black/5">
                   {cover ? (

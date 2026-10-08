@@ -37,15 +37,15 @@ export function BrandForm({ initialData }: { initialData: OnboardingResponse | n
 
   return (
     <form onSubmit={save} className="space-y-6">
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <section className="card p-6">
         <h2 className="mb-5 font-bold">Business</h2>
         <BusinessFields form={form} update={update} />
       </section>
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <section className="card p-6">
         <h2 className="mb-5 font-bold">Brand</h2>
         <BrandFields form={form} update={update} />
       </section>
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <section className="card p-6">
         <h2 className="mb-5 font-bold">Goals & platforms</h2>
         <GoalsFields form={form} update={update} />
       </section>

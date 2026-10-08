@@ -28,7 +28,7 @@ export default async function BrandPage() {
     <div className="space-y-8">
       <PageHeader eyebrow="Brand" title="Your brand brief" />
 
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <section className="card p-6">
         <h2 className="mb-5 font-bold">Logo</h2>
         <LogoUpload userId={profile.id} initialUrl={logoUrl} />
       </section>

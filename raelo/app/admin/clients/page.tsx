@@ -58,7 +58,7 @@ export default async function ClientsPage({
 
     const [clients, [{ n }]] = await Promise.all([
       tx
-        .select({ id: profiles.id, full_name: profiles.full_name, email: profiles.email, phone: profiles.phone, company_name: profiles.company_name, created_at: profiles.created_at })
+        .select({ id: profiles.id, full_name: profiles.full_name, email: profiles.email, phone: profiles.phone, company_name: profiles.company_name, account_type: profiles.account_type, created_at: profiles.created_at })
         .from(profiles)
         .where(where)
         .orderBy(desc(profiles.created_at))
@@ -101,7 +101,7 @@ export default async function ClientsPage({
           <option value="">All clients</option>
           {Object.entries(FILTERS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
-        <button className="h-9 rounded-lg bg-[#111827] px-4 text-sm font-semibold text-white">Filter</button>
+        <button className="btn-dark">Filter</button>
         <Link href="/admin/clients" className="h-9 px-2 text-sm leading-9 text-black/50">Reset</Link>
       </form>
 
@@ -122,7 +122,10 @@ export default async function ClientsPage({
                         <Link href={`/admin/clients/${c.id}`} className="font-semibold hover:text-[#ed1c24]">
                           {c.company_name || c.full_name || c.email}
                         </Link>
-                        {c.company_name && <span className="block text-xs text-black/50">{c.full_name}</span>}
+                        <span className="block text-xs text-black/50">
+                          {c.account_type === "organization" ? "Organization" : "Individual"}
+                          {c.company_name && c.full_name ? ` · ${c.full_name}` : ""}
+                        </span>
                       </Td>
                       <Td className="text-black/70">{c.email}<span className="block text-xs text-black/50">{c.phone}</span></Td>
                       <Td>{pkg?.name ?? "—"}</Td>

@@ -29,8 +29,11 @@ export const auth = betterAuth({
   },
   user: {
     additionalFields: {
-      // Collected on sign-up and copied to profiles.phone by the trigger.
+      // Collected on sign-up and copied to profiles by the trigger, which
+      // validates them (0019). Never add role or other privileged fields.
       phone: { type: "string", required: false, input: true },
+      accountType: { type: "string", required: false, input: true },
+      companyName: { type: "string", required: false, input: true },
     },
   },
   emailAndPassword: {

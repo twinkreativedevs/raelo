@@ -66,7 +66,7 @@ export default async function BillingPage() {
     <div className="space-y-8">
       <PageHeader eyebrow="Billing" title="Subscription & invoices" />
 
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <section className="card p-6">
         <h2 className="font-bold">Subscriptions</h2>
         {subscriptions.length ? (
           <ul className="mt-2 divide-y divide-black/5">
@@ -125,7 +125,7 @@ export default async function BillingPage() {
         )}
       </section>
 
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <section className="card p-6">
         <h2 className="font-bold">Invoices</h2>
         {invoices.length ? (
           <ul className="mt-2 divide-y divide-black/5">

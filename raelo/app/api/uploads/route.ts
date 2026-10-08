@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { authorize } from "@/lib/auth";
+import { TEAM_ROLES } from "@/lib/roles";
 import { CONTENT_MAX_BYTES, CONTENT_MIME_TYPES } from "@/lib/content-upload";
 import { schema } from "@/lib/db";
 import { LOGO_EXTENSIONS, LOGO_MAX_BYTES } from "@/lib/logo-upload";
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
         if (!payload || pathname.includes("..")) throw new Error("Invalid upload.");
 
         if (payload.kind === "logo") {
-          const auth = await authorize(["client", "admin", "account_manager", "designer"]);
+          const auth = await authorize(["client", ...TEAM_ROLES]);
           if (!auth || !pathname.startsWith(`${BRAND_ASSETS_PREFIX}${auth.profile.id}/`)) {
             throw new Error("Not allowed.");
           }
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
           };
         }
 
-        const auth = await authorize(["admin", "account_manager", "designer"]);
+        const auth = await authorize(TEAM_ROLES);
         if (!auth) throw new Error("Not allowed.");
         const [batch] = await auth.asUser((tx) =>
           tx

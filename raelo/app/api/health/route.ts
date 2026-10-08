@@ -27,7 +27,7 @@ const OPTIONAL = [
 ] as const;
 
 // Bump when a migration adds something the app depends on.
-const LATEST_MIGRATION = "0018_complimentary_subscriptions.sql";
+const LATEST_MIGRATION = "0019_account_types_and_team_roles.sql";
 
 export async function GET() {
   const env = Object.fromEntries(

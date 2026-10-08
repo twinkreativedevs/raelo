@@ -8,6 +8,7 @@ import { cache } from "react";
 import { auth } from "@/lib/better-auth";
 import { db, schema, withUser, type Tx } from "@/lib/db";
 import type { Profile, ProfileRole, TeamRole } from "@/lib/db/types";
+import { TEAM_ROLES } from "@/lib/roles";
 
 /** The signed-in user's id from the Better Auth session, or null. */
 export const getSessionUserId = cache(async (): Promise<string | null> => {
@@ -58,7 +59,7 @@ export async function requireProfile(
 /** Team login page. Not linked from the public site. */
 export const STAFF_LOGIN_PATH = "/compass";
 
-export const STAFF_ROLES: TeamRole[] = ["admin", "account_manager", "designer"];
+export const STAFF_ROLES: TeamRole[] = TEAM_ROLES;
 
 export function isStaffRole(role: string | null | undefined): role is TeamRole {
   return STAFF_ROLES.includes(role as TeamRole);
@@ -95,5 +96,5 @@ export async function authorize(roles: ProfileRole[]): Promise<Authed | null> {
 
 /** Any signed-in, active user (client or staff), or null. */
 export async function currentUser(): Promise<Authed | null> {
-  return authorize(["client", "admin", "account_manager", "designer"]);
+  return authorize(["client", ...TEAM_ROLES]);
 }
