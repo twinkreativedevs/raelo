@@ -32,7 +32,8 @@ export function AuthShell({
   variant = "client",
   children,
 }: {
-  title: string;
+  /** Omit when the page renders its own heading. */
+  title?: string;
   subtitle?: React.ReactNode;
   /** "team" shows the admin-area panel used on /compass. */
   variant?: keyof typeof PANELS;
@@ -82,13 +83,15 @@ export function AuthShell({
         </div>
         <div className="flex flex-1 items-center justify-center py-10">
           <div className="w-full max-w-[420px]">
-            <h1 className="text-3xl font-black tracking-tight text-[#080d16]">
-              {title}
-            </h1>
+            {title && (
+              <h1 className="text-3xl font-black tracking-tight text-[#080d16]">
+                {title}
+              </h1>
+            )}
             {subtitle && (
               <p className="mt-2 text-sm text-black/55">{subtitle}</p>
             )}
-            <div className="mt-8">{children}</div>
+            <div className={title ? "mt-8" : undefined}>{children}</div>
           </div>
         </div>
       </main>
