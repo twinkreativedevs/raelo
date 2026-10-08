@@ -2,25 +2,43 @@ import { Check } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 
-const POINTS = [
-  "Designed posts and captions, made for your brand",
-  "New content every month in your private portal",
-  "Download, post and keep showing up",
-];
+const PANELS = {
+  client: {
+    headline: "Content that keeps your brand showing up.",
+    points: [
+      "Designed posts and captions, made for your brand",
+      "New content every month in your private portal",
+      "Download, post and keep showing up",
+    ],
+  },
+  team: {
+    headline: "Raelo Compass",
+    points: [
+      "Clients, orders and subscriptions",
+      "Content batches, drafts and publishing",
+      "Revenue, invoices and the team",
+    ],
+  },
+};
 
 /**
- * Split layout for the sign-up and login pages: a dark brand panel on large
- * screens, and the form on white. On phones only the form shows.
+ * Split layout for the sign-up, login and team login pages: a dark brand
+ * panel on large screens, and the form on white. On phones only the form
+ * shows.
  */
 export function AuthShell({
   title,
   subtitle,
+  variant = "client",
   children,
 }: {
   title: string;
   subtitle?: React.ReactNode;
+  /** "team" shows the admin-area panel used on /compass. */
+  variant?: keyof typeof PANELS;
   children: React.ReactNode;
 }) {
+  const panel = PANELS[variant];
   return (
     <div className="grid min-h-svh bg-white lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <aside className="relative hidden overflow-hidden bg-[#080d16] p-12 text-white lg:flex lg:flex-col lg:justify-between">
@@ -39,10 +57,10 @@ export function AuthShell({
 
         <div className="relative max-w-md">
           <h2 className="text-4xl font-black leading-tight tracking-tight">
-            Content that keeps your brand showing up.
+            {panel.headline}
           </h2>
           <ul className="mt-8 space-y-4">
-            {POINTS.map((point) => (
+            {panel.points.map((point) => (
               <li key={point} className="flex items-start gap-3 text-white/80">
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#ed1c24]">
                   <Check className="h-3 w-3" strokeWidth={3} />

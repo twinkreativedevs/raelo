@@ -33,9 +33,12 @@ switch on payments.
 ### 3. Get access
 
 - [ ] Sign up at `https://<domain>/auth/sign-up` with your own email.
-- [ ] Make yourself admin (from your computer, with `.env.local` pointing at
-      the same database): `npm run make-admin -- you@example.com`
-- [ ] Sign out and back in → you land on `/admin`.
+- [ ] Make yourself admin. Either from your computer (with `.env.local`
+      pointing at the same database): `npm run make-admin -- you@example.com`,
+      or in the Neon console → SQL Editor:
+      `update profiles set role = 'admin' where email = 'you@example.com';`
+- [ ] Sign out, then sign in at `https://<domain>/compass` → you land on
+      `/admin`.
 - [ ] To see the **client portal**, sign up a second account (e.g.
       `you+client@example.com`), then in **Admin → Clients → that client →
       Give free plan**. Sign in as that account: the portal shows the plan,
