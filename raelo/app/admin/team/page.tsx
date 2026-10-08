@@ -34,7 +34,7 @@ export default async function TeamPage() {
       <Panel title="Invite a team member">
         <InviteForm />
         <p className="mt-2 text-xs text-black/50">
-          They get an email with a link to set their password (valid 24 hours), then sign in at /auth/login and land on /admin. Until email is connected, the link is shown here for you to send them.
+          They get an email with a link to set their password (valid 24 hours), then sign in at /compass and land on /admin. Until email is connected, the link is shown here for you to send them.
         </p>
       </Panel>
 

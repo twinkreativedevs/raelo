@@ -151,8 +151,11 @@ update the model there. Rate limited per visitor and site-wide.
 
 ## Admin & team area (`/admin`)
 
-Staff sign in at `/auth/login` like clients and land on `/admin`. The sidebar
-adapts to the role:
+Staff sign in at **`/compass`** (not linked from the public site, hidden
+from search engines) and land on `/admin`. Signed-out visits to `/admin`
+redirect there, and Log out returns there. A client account that tries
+`/compass` is signed back out. The real protection is the role check on
+every admin page, not the hidden URL. The sidebar adapts to the role:
 
 | Section | Admin | Account manager | Designer |
 | --- | :---: | :---: | :---: |

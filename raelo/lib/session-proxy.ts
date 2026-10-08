@@ -14,8 +14,10 @@ import { REF_CODE_PATTERN, REF_COOKIE, REF_COOKIE_MAX_DAYS } from "./referral";
 // - /api/health: uptime checks.
 // - /api/auth: Better Auth's own endpoints (sign-in, verify email, …).
 // - /terms, /privacy, /refunds: legal pages.
+// - /compass: the team login page.
 const PUBLIC_PATH_PREFIXES = [
   "/auth",
+  "/compass",
   "/api/auth",
   "/terms",
   "/privacy",
@@ -62,8 +64,12 @@ export async function updateSession(request: NextRequest) {
   if (!hasSession && !isPublicPath(request.nextUrl.pathname)) {
     // Signed-out visitor on a private page: send them to login and bring
     // them back here afterwards.
+    // The team area has its own login page.
     const url = request.nextUrl.clone();
-    url.pathname = "/auth/login";
+    const isAdmin =
+      request.nextUrl.pathname === "/admin" ||
+      request.nextUrl.pathname.startsWith("/admin/");
+    url.pathname = isAdmin ? "/compass" : "/auth/login";
     url.search = "";
     url.searchParams.set(
       "next",

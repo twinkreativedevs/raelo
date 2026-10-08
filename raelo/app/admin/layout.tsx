@@ -42,7 +42,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <div className="min-w-0 flex-1">
         <header className="flex h-14 items-center justify-end gap-3 border-b border-black/5 bg-white px-6">
           <span className="text-sm text-black/50 lg:hidden">{ROLE_LABELS[role]}</span>
-          <LogoutButton />
+          <LogoutButton redirectTo="/compass" />
         </header>
         <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">{children}</main>
       </div>

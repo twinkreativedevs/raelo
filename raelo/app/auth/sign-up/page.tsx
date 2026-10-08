@@ -1,5 +1,8 @@
 import { googleConfigured } from "@/lib/auth-providers";
+import { AuthShell } from "@/components/auth-shell";
 import { SignUpForm } from "@/components/sign-up-form";
+
+export const metadata = { title: "Create your account" };
 
 export default async function Page({
   searchParams,
@@ -9,10 +12,11 @@ export default async function Page({
   const { next } = await searchParams;
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
-        <SignUpForm next={next} googleEnabled={googleConfigured} />
-      </div>
-    </div>
+    <AuthShell
+      title="Create your account"
+      subtitle="Get your brand's content done for you. It takes a minute."
+    >
+      <SignUpForm next={next} googleEnabled={googleConfigured} />
+    </AuthShell>
   );
 }

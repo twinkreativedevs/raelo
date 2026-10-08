@@ -37,12 +37,15 @@ function authed(profile: Profile): Authed {
 }
 
 /**
- * Returns the signed-in user's profile, or redirects to login (preserving
- * `nextPath`). Use at the top of server components and actions.
+ * Returns the signed-in user's profile, or redirects to `loginPath`
+ * (preserving `nextPath`). Use at the top of server components and actions.
  */
-export async function requireProfile(nextPath = "/portal"): Promise<Authed> {
+export async function requireProfile(
+  nextPath = "/portal",
+  loginPath = "/auth/login",
+): Promise<Authed> {
   const userId = await getSessionUserId();
-  if (!userId) redirect(`/auth/login?next=${encodeURIComponent(nextPath)}`);
+  if (!userId) redirect(`${loginPath}?next=${encodeURIComponent(nextPath)}`);
 
   const profile = await loadProfile(userId);
   if (!profile || !profile.is_active) {
@@ -52,6 +55,9 @@ export async function requireProfile(nextPath = "/portal"): Promise<Authed> {
   return authed(profile);
 }
 
+/** Team login page. Not linked from the public site. */
+export const STAFF_LOGIN_PATH = "/compass";
+
 export const STAFF_ROLES: TeamRole[] = ["admin", "account_manager", "designer"];
 
 export function isStaffRole(role: string | null | undefined): role is TeamRole {
@@ -60,11 +66,12 @@ export function isStaffRole(role: string | null | undefined): role is TeamRole {
 
 /**
  * For /admin pages: requires an active team member, optionally with one of
- * `roles`. Clients are sent to their portal; staff without the role get a
- * 404 so admin-only pages aren't advertised.
+ * `roles`. Signed-out visitors go to the team login (/compass), clients to
+ * their portal; staff without the role get a 404 so admin-only pages
+ * aren't advertised.
  */
 export async function requireStaff(nextPath: string, roles: TeamRole[] = STAFF_ROLES) {
-  const result = await requireProfile(nextPath);
+  const result = await requireProfile(nextPath, STAFF_LOGIN_PATH);
 
   if (!isStaffRole(result.profile.role)) redirect("/portal");
   if (!roles.includes(result.profile.role)) notFound();

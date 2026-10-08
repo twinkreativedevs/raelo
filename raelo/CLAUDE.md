@@ -54,6 +54,8 @@ setup and docs/LAUNCH.md for going live.
 - Email confirmation is required only when `RESEND_API_KEY` is set.
 - Invites and "set your password" use `passwordSetupLink()`; the page is
   `/auth/update-password?token=…`.
+- Team login is `/compass` (`STAFF_LOGIN_PATH`); `requireStaff` and the
+  proxy send signed-out `/admin` visits there.
 - Bootstrap: `npm run make-admin -- <email>`. Free plans: Admin → Clients →
   Give free plan, or `npm run grant-plan`.
 
