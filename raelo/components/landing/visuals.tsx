@@ -134,60 +134,108 @@ export function HeroWorkspace() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Solution: before and after Raelo                                    */
+/* Meet Raelo: a month of content, handled                            */
+/* ------------------------------------------------------------------ */
+
+const HANDLED = [
+  "Content plan for the month",
+  "12 posts designed for your brand",
+  "Captions written",
+  "Calendar organised",
+  "Delivered to your portal",
+];
+
+export function HandledVisual() {
+  return (
+    <div
+      role="img"
+      aria-label="A month of content handled: plan, designed posts, captions, calendar and delivery all ticked off"
+      className="rounded-3xl bg-white p-5 text-[#080d16] sm:p-7"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.16em] text-[#ed1c24]">OCTOBER</p>
+          <p className="text-xl font-black">Your content, handled</p>
+        </div>
+        <span className="rounded-full bg-[#ed1c24] px-3 py-1.5 text-[11px] font-bold text-white">Ready</span>
+      </div>
+      <ul className="mt-5 space-y-2">
+        {HANDLED.map((item) => (
+          <li key={item} className="flex items-center gap-3 rounded-xl bg-[#f6f6f7] px-3.5 py-2.5 text-sm font-semibold">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#080d16] text-white">
+              <Check className="h-3.5 w-3.5" strokeWidth={3} />
+            </span>
+            {item}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-5 grid grid-cols-6 gap-1.5">
+        {[...TILES].map((tile, i) => (
+          <PostTile key={i} tile={tile} className="rounded-md p-0 [&>p]:hidden" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Before vs after                                                     */
 /* ------------------------------------------------------------------ */
 
 export function BeforeAfter() {
   const days = Array.from({ length: 21 }, (_, i) => i + 1);
   const scattered = new Set([3, 4, 15]);
-  const planned = new Map([[2, 0], [5, 1], [7, 2], [9, 3], [12, 5], [14, 0], [16, 2], [19, 1]]);
+  // Light tiles only, so every planned post shows on the dark card.
+  const planned = new Map([[2, 0], [5, 2], [7, 3], [9, 5], [12, 0], [14, 2], [16, 3], [19, 5]]);
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <div role="img" aria-label="Before: random ideas, a blank calendar and inconsistent posting" className="rounded-2xl border border-dashed border-white/20 p-5">
-        <p className="flex items-center gap-2 text-[11px] font-bold tracking-[0.16em] text-white/50">
-          <X className="h-3.5 w-3.5" /> BEFORE
+    <div className="grid gap-5 lg:grid-cols-2">
+      <div className="rounded-3xl border border-dashed border-black/15 bg-white p-6 sm:p-8">
+        <p className="flex items-center gap-2 text-xs font-bold tracking-[0.16em] text-black/45">
+          <X className="h-4 w-4" /> WITHOUT RAELO
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {["post something?", "promo again…", "what do we say?"].map((note, i) => (
-            <span
-              key={note}
-              className="rounded-md bg-white/10 px-2.5 py-1.5 text-[11px] text-white/60"
-              style={{ transform: `rotate(${[-3, 2, -1.5][i]}deg)` }}
-            >
-              {note}
-            </span>
+        <p className="mt-5 text-3xl font-black leading-tight tracking-tight text-black/80">“What should we post?”</p>
+        <ul className="mt-6 grid gap-x-4 gap-y-3 sm:grid-cols-2 text-[15px] text-black/55">
+          {["No ideas", "No time", "Random posting", "Inconsistent presence"].map((t) => (
+            <li key={t} className="flex items-center gap-2.5">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/[0.06]">
+                <X className="h-3 w-3" />
+              </span>
+              {t}
+            </li>
           ))}
-        </div>
-        <div className="mt-5 grid grid-cols-7 gap-1.5">
+        </ul>
+        <div role="img" aria-label="A mostly empty content calendar" className="mt-8 grid grid-cols-7 gap-1.5">
           {days.map((d) => (
-            <span key={d} className={cn("aspect-square rounded-md", scattered.has(d) ? "bg-white/30" : "bg-white/[0.06]")} />
+            <span key={d} className={cn("aspect-square rounded-md", scattered.has(d) ? "bg-black/20" : "bg-black/[0.05]")} />
           ))}
         </div>
-        <p className="mt-4 text-xs text-white/45">Random ideas · Blank calendar · Inconsistent posting</p>
       </div>
 
-      <div role="img" aria-label="After: a strategy, planned content and a consistent presence" className="rounded-2xl bg-white p-5 text-[#080d16]">
-        <p className="flex items-center gap-2 text-[11px] font-bold tracking-[0.16em] text-[#ed1c24]">
-          <Check className="h-3.5 w-3.5" strokeWidth={3} /> AFTER
+      <div className="rounded-3xl bg-[#080d16] p-6 text-white sm:p-8">
+        <p className="flex items-center gap-2 text-xs font-bold tracking-[0.16em] text-[#ed1c24]">
+          <Check className="h-4 w-4" strokeWidth={3} /> WITH RAELO
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {["Goal: more bookings", "Audience: young families", "3 posts a week"].map((note) => (
-            <span key={note} className="rounded-md bg-[#080d16] px-2.5 py-1.5 text-[11px] font-semibold text-white">
-              {note}
-            </span>
+        <p className="mt-5 text-3xl font-black leading-tight tracking-tight">“It&apos;s already done.”</p>
+        <ul className="mt-6 grid gap-x-4 gap-y-3 sm:grid-cols-2 text-[15px] text-white/80">
+          {["Content planned", "Content created", "Calendar organised", "Ready to publish", "Consistent presence"].map((t) => (
+            <li key={t} className="flex items-center gap-2.5">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#ed1c24]">
+                <Check className="h-3 w-3" strokeWidth={3} />
+              </span>
+              {t}
+            </li>
           ))}
-        </div>
-        <div className="mt-5 grid grid-cols-7 gap-1.5">
+        </ul>
+        <div role="img" aria-label="A content calendar with posts planned through the month" className="mt-8 grid grid-cols-7 gap-1.5">
           {days.map((d) =>
             planned.has(d) ? (
               <PostTile key={d} tile={TILES[planned.get(d)!]} className="rounded-md p-0 [&>p]:hidden" />
             ) : (
-              <span key={d} className="aspect-square rounded-md bg-black/[0.05]" />
+              <span key={d} className="aspect-square rounded-md bg-white/[0.07]" />
             ),
           )}
         </div>
-        <p className="mt-4 text-xs text-black/55">Strategy · Planned content · Consistent presence</p>
       </div>
     </div>
   );
@@ -263,7 +311,7 @@ export function PromoSample() {
     <figure>
       <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#ed1c24] p-5 text-white">
         <p className="text-[10px] font-bold tracking-[0.18em] text-white/80">THIS WEEKEND ONLY</p>
-        <p className="mt-2 text-6xl font-black leading-none tracking-tighter">20%</p>
+        <p className="mt-2 text-5xl font-black leading-none tracking-tighter sm:text-6xl">20%</p>
         <p className="text-2xl font-black leading-none">OFF</p>
         <span className="absolute bottom-4 left-5 rounded-full bg-white px-3 py-1.5 text-[11px] font-black text-[#ed1c24]">Shop now</span>
         <span className="absolute -right-6 -top-6 h-24 w-24 rounded-full border-[14px] border-white/25" />
@@ -327,6 +375,22 @@ export function CampaignSample() {
         ))}
       </div>
       <Label>Campaign content</Label>
+    </figure>
+  );
+}
+
+export function CaptionSample() {
+  return (
+    <figure>
+      <div className="flex h-full flex-col rounded-2xl bg-white p-5 text-[#080d16]">
+        <p className="text-[10px] font-bold tracking-[0.16em] text-black/40">CAPTION · INSTAGRAM</p>
+        <p className="mt-3 text-[13px] leading-[1.6] text-black/75">
+          Fresh flavours, every Friday. This week: smoky jollof, peppered chicken and our new zobo.
+          Order from 9am, or swing by from 12. Link in bio.
+        </p>
+        <p className="mt-3 text-[12px] font-semibold text-[#ed1c24]">#FridayFlavours #LagosEats</p>
+      </div>
+      <Label>Caption</Label>
     </figure>
   );
 }
