@@ -15,9 +15,15 @@ import { REF_CODE_PATTERN, REF_COOKIE, REF_COOKIE_MAX_DAYS } from "./referral";
 // - /api/auth: Better Auth's own endpoints (sign-in, verify email, …).
 // - /terms, /privacy, /refunds: legal pages.
 // - /compass: the team login page.
+// - /opengraph-image, /twitter-image, /icon, /apple-icon: share previews and
+//   icons, fetched by link-preview bots and browsers without a session.
 const PUBLIC_PATH_PREFIXES = [
   "/auth",
   "/compass",
+  "/opengraph-image",
+  "/twitter-image",
+  "/icon",
+  "/apple-icon",
   "/api/auth",
   "/terms",
   "/privacy",
