@@ -1,193 +1,414 @@
-import { BarChart3, Briefcase, Download, Layers, Megaphone, Store } from "lucide-react";
+import { Check, Heart, MessageCircle, Send, X } from "lucide-react";
+
+import { cn } from "@/lib/utils";
 
 // Illustrations for the landing page, drawn in code so they stay sharp,
 // load instantly and use the brand palette (red #ed1c24, dark #080d16).
-// They show the product itself (designed posts, the delivery portal), not
-// stock photos. To use photography instead, swap a component for
-// next/image pointing at a file in /public.
+// They show the kind of content Raelo makes, not stock photos. To use real
+// client work instead, swap a component for next/image pointing at a file
+// in /public.
 
-type Tile = { bg: string; fg: string; kicker: string; title: string; shape: "circle" | "bars" | "tag" | "quote" };
+const RED = "#ed1c24";
+const DARK = "#080d16";
+const BLUSH = "#fde8e9";
+const CREAM = "#fff5ea";
+
+type Tile = { bg: string; fg: string; kicker: string; title: string };
 
 const TILES: Tile[] = [
-  { bg: "#ed1c24", fg: "#ffffff", kicker: "NEW IN", title: "Weekend menu", shape: "circle" },
-  { bg: "#080d16", fg: "#ffffff", kicker: "TIP 03", title: "Post at 7pm", shape: "bars" },
-  { bg: "#fde8e9", fg: "#080d16", kicker: "OFFER", title: "20% off Friday", shape: "tag" },
-  { bg: "#f4f4f5", fg: "#080d16", kicker: "REVIEW", title: "“Fast and lovely”", shape: "quote" },
-  { bg: "#080d16", fg: "#ed1c24", kicker: "LAUNCH", title: "Now open", shape: "circle" },
-  { bg: "#ed1c24", fg: "#ffffff", kicker: "HOW TO", title: "3 easy steps", shape: "bars" },
+  { bg: RED, fg: "#fff", kicker: "NEW IN", title: "Weekend menu" },
+  { bg: DARK, fg: "#fff", kicker: "TIP 03", title: "Post at 7pm" },
+  { bg: BLUSH, fg: DARK, kicker: "OFFER", title: "20% off Friday" },
+  { bg: CREAM, fg: DARK, kicker: "BEHIND THE SCENES", title: "How we pack" },
+  { bg: DARK, fg: RED, kicker: "LAUNCH", title: "Now open" },
+  { bg: RED, fg: "#fff", kicker: "HOW TO", title: "3 easy steps" },
 ];
 
-function TileShape({ shape, fg }: { shape: Tile["shape"]; fg: string }) {
-  if (shape === "circle") {
-    return <div className="absolute -bottom-4 -right-4 h-14 w-14 rounded-full opacity-25" style={{ background: fg }} />;
-  }
-  if (shape === "bars") {
-    return (
-      <div className="absolute bottom-2 right-2 flex items-end gap-0.5 opacity-40">
-        {[6, 10, 14].map((h) => (
-          <span key={h} className="w-1.5 rounded-sm" style={{ height: h, background: fg }} />
-        ))}
-      </div>
-    );
-  }
-  if (shape === "tag") {
-    return <div className="absolute bottom-2 right-2 h-5 w-9 rotate-[-8deg] rounded-md opacity-80" style={{ background: "#ed1c24" }} />;
-  }
-  return <div className="absolute right-2 top-1 text-3xl font-black leading-none opacity-20" style={{ color: fg }}>”</div>;
-}
-
-function PostTile({ tile, className = "" }: { tile: Tile; className?: string }) {
+function PostTile({ tile, className }: { tile: Tile; className?: string }) {
   return (
     <div
-      className={`relative aspect-square overflow-hidden rounded-lg p-2 ${className}`}
+      className={cn("relative aspect-square overflow-hidden rounded-md p-1.5", className)}
       style={{ background: tile.bg, color: tile.fg }}
     >
-      <p className="text-[7px] font-bold tracking-[0.15em] opacity-70">{tile.kicker}</p>
-      <p className="mt-1 text-[11px] font-black leading-tight">{tile.title}</p>
-      <TileShape shape={tile.shape} fg={tile.fg} />
+      <p className="truncate text-[6px] font-bold tracking-[0.12em] opacity-70">{tile.kicker}</p>
+      <p className="mt-0.5 text-[9px] font-black leading-tight">{tile.title}</p>
+      <span className="absolute -bottom-3 -right-3 h-8 w-8 rounded-full opacity-25" style={{ background: tile.fg }} />
     </div>
   );
 }
 
-/** Hero: a phone showing a feed of finished posts. */
-export function HeroVisual() {
+/* ------------------------------------------------------------------ */
+/* Hero: a content workspace with a plan, a post and its caption       */
+/* ------------------------------------------------------------------ */
+
+const PLAN = [
+  { day: "Mon 6", type: "Educate", title: "3 mistakes new customers make", tone: "bg-[#080d16] text-white" },
+  { day: "Wed 8", type: "Promote", title: "Weekend menu is here", tone: "bg-[#ed1c24] text-white", active: true },
+  { day: "Fri 10", type: "Engage", title: "This or that? Jollof edition", tone: "bg-[#fde8e9] text-[#080d16]" },
+  { day: "Sun 12", type: "Build trust", title: "Behind the scenes: Saturday prep", tone: "bg-[#fff5ea] text-[#080d16]" },
+];
+
+export function HeroWorkspace() {
   return (
-    <div className="relative flex min-h-[520px] items-center justify-center sm:min-h-[560px]">
-      <div className="absolute h-[340px] w-[340px] rounded-[45%] bg-[#ed1c24] sm:h-[430px] sm:w-[430px] lg:h-[500px] lg:w-[500px]" />
+    <div className="relative mx-auto w-full max-w-[600px] py-6 lg:py-10">
+      <div aria-hidden className="absolute -right-10 top-0 h-72 w-72 rounded-full bg-[#ed1c24] sm:h-96 sm:w-96" />
+      <div aria-hidden className="absolute -left-8 bottom-0 h-40 w-40 rounded-full border-[18px] border-[#080d16]/[0.06]" />
 
       <div
         role="img"
-        aria-label="A phone showing a month of designed social media posts"
-        className="relative z-10 w-[250px] rounded-[2.2rem] border-[10px] border-[#080d16] bg-white shadow-2xl sm:w-[280px]"
+        aria-label="A Raelo content workspace: a week's content plan, a designed post and its caption"
+        className="relative overflow-hidden rounded-3xl bg-white shadow-[0_30px_80px_-20px_rgba(8,13,22,0.35)] ring-1 ring-black/5"
       >
-        <div className="mx-auto mt-2 h-1.5 w-16 rounded-full bg-black/10" />
-        <div className="flex items-center gap-2 px-3 pb-2 pt-3">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ed1c24] text-xs font-black text-white">B</span>
-          <div>
-            <p className="text-[11px] font-bold leading-none">yourbrand</p>
-            <p className="text-[9px] text-black/40">Posting every week</p>
+        <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-3.5">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#ed1c24]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-black/10" />
+            <span className="h-2.5 w-2.5 rounded-full bg-black/10" />
           </div>
+          <p className="text-[11px] font-semibold text-black/45">Content plan · October</p>
+          <span className="rounded-full bg-[#080d16] px-2.5 py-1 text-[10px] font-bold text-white">12 posts</span>
         </div>
-        <div className="grid grid-cols-3 gap-1 px-1 pb-3">
-          {[...TILES, ...TILES.slice(0, 3)].map((tile, i) => (
-            <PostTile key={i} tile={tile} className="rounded-sm" />
-          ))}
-        </div>
-      </div>
 
-      <div className="absolute right-0 top-20 z-20 rounded-xl bg-white px-4 py-3 shadow-xl sm:right-4 sm:top-24">
-        <p className="text-sm font-black">October batch</p>
-        <p className="text-xs text-black/50">Ready to download ✓</p>
-      </div>
-      <div className="absolute bottom-16 left-0 z-20 rounded-xl bg-[#080d16] px-4 py-3 text-white shadow-xl sm:bottom-20 sm:left-4">
-        <p className="text-sm font-black">Designs + captions</p>
-        <p className="text-xs text-white/60">Made for your brand</p>
-      </div>
-    </div>
-  );
-}
-
-const AUDIENCE_ART = {
-  "Business Owners": { icon: Store, accent: Megaphone },
-  "Digital Marketers": { icon: BarChart3, accent: Megaphone },
-  Agencies: { icon: Briefcase, accent: Layers },
-} as const;
-
-/** Header art for the "Built for" cards. */
-export function AudienceArt({ audience }: { audience: string }) {
-  const art = AUDIENCE_ART[audience as keyof typeof AUDIENCE_ART] ?? AUDIENCE_ART["Business Owners"];
-  const Icon = art.icon;
-  const Accent = art.accent;
-  return (
-    <div className="relative flex h-40 items-center justify-center overflow-hidden bg-white/10" aria-hidden>
-      <div className="absolute -left-6 -top-6 h-24 w-24 rounded-full bg-[#ed1c24]/30" />
-      <div className="absolute -bottom-8 -right-4 h-28 w-28 rounded-[40%] bg-white/5" />
-      <div className="grid grid-cols-3 gap-1.5 opacity-90">
-        {TILES.slice(0, 3).map((tile, i) => (
-          <PostTile key={i} tile={tile} className="w-12" />
-        ))}
-      </div>
-      <span className="absolute left-5 top-5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#ed1c24] text-white shadow-lg">
-        <Icon className="h-5 w-5" />
-      </span>
-      <span className="absolute bottom-5 right-5 flex h-8 w-8 items-center justify-center rounded-lg bg-white text-[#080d16]">
-        <Accent className="h-4 w-4" />
-      </span>
-    </div>
-  );
-}
-
-/** "How it works": the client portal with a delivered batch. */
-export function PortalVisual() {
-  return (
-    <div
-      role="img"
-      aria-label="The Raelo client portal showing a month of content ready to download"
-      className="rounded-3xl bg-[#f4f4f5] p-4 sm:p-6"
-    >
-      <div className="overflow-hidden rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center gap-1.5 border-b border-black/5 px-4 py-3">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#ed1c24]" />
-          <span className="h-2.5 w-2.5 rounded-full bg-black/10" />
-          <span className="h-2.5 w-2.5 rounded-full bg-black/10" />
-          <span className="ml-3 truncate text-[11px] text-black/40">raelo · Your content</span>
-        </div>
-        <div className="p-4 sm:p-5">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-bold tracking-[0.15em] text-[#ed1c24]">DELIVERED THIS MONTH</p>
-              <p className="text-lg font-black">October posts</p>
-            </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ed1c24] px-3 py-1.5 text-[11px] font-bold text-white">
-              <Download className="h-3 w-3" /> Download all
-            </span>
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            {TILES.map((tile, i) => (
-              <PostTile key={i} tile={tile} />
+        <div className="grid gap-4 p-4 sm:grid-cols-[1fr_1.05fr] sm:p-5">
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold tracking-[0.16em] text-black/40">THIS WEEK</p>
+            {PLAN.map((item) => (
+              <div
+                key={item.day}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl border p-2.5",
+                  item.active ? "border-[#ed1c24] bg-[#ed1c24]/[0.04]" : "border-black/[0.06]",
+                )}
+              >
+                <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[10px] font-black", item.tone)}>
+                  {item.day.split(" ")[1]}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#ed1c24]">{item.type}</p>
+                  <p className="truncate text-[12px] font-semibold text-[#080d16]">{item.title}</p>
+                </div>
+              </div>
             ))}
           </div>
-          <div className="mt-4 rounded-lg bg-[#fafafa] p-3">
-            <p className="text-[10px] font-bold text-black/40">CAPTION · INSTAGRAM</p>
-            <p className="mt-1 text-xs leading-5 text-black/70">
-              Our weekend menu is here 🍲 Swing by Saturday from 10am, or order ahead with the link in bio.
-            </p>
+
+          <div className="hidden sm:block">
+            <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#ed1c24] p-5 text-white">
+              <p className="text-[10px] font-bold tracking-[0.18em] text-white/75">NEW THIS WEEKEND</p>
+              <p className="mt-2 text-[28px] font-black leading-[0.95] tracking-tight">Weekend menu is here.</p>
+              <p className="mt-3 text-[11px] font-semibold text-white/80">Saturday from 10am</p>
+              <span className="absolute -bottom-10 -right-10 h-36 w-36 rounded-full bg-[#080d16]" />
+              <span className="absolute bottom-5 right-5 flex h-12 w-12 items-center justify-center rounded-full bg-white text-[11px] font-black text-[#ed1c24]">
+                NEW
+              </span>
+            </div>
+            <div className="mt-3 rounded-xl bg-[#f6f6f7] p-3">
+              <p className="text-[9px] font-bold tracking-[0.14em] text-black/40">CAPTION · INSTAGRAM</p>
+              <p className="mt-1 text-[11px] leading-[1.5] text-black/70">
+                Our weekend menu is here. Swing by Saturday from 10am, or order ahead with the link in bio.
+              </p>
+            </div>
           </div>
+        </div>
+      </div>
+
+      <div className="absolute -bottom-1 left-4 hidden rounded-2xl bg-white p-3.5 shadow-xl ring-1 ring-black/5 sm:block lg:-left-6">
+        <p className="text-[10px] font-bold tracking-[0.14em] text-black/40">BRAND KIT</p>
+        <div className="mt-2 flex gap-1.5">
+          {[RED, DARK, BLUSH, CREAM].map((c) => (
+            <span key={c} className="h-6 w-6 rounded-full ring-1 ring-black/10" style={{ background: c }} />
+          ))}
+        </div>
+      </div>
+
+      <div className="absolute -bottom-1 right-4 flex items-center gap-2.5 rounded-2xl bg-[#080d16] px-4 py-3 text-white shadow-xl sm:right-10">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ed1c24]">
+          <Check className="h-4 w-4" strokeWidth={3} />
+        </span>
+        <div>
+          <p className="text-[12px] font-black">Approved</p>
+          <p className="text-[10px] text-white/60">Ready to post Wednesday</p>
         </div>
       </div>
     </div>
   );
 }
 
-/** "The solution": a month of posts laid out on a content calendar. */
-export function CalendarVisual() {
-  const days = Array.from({ length: 28 }, (_, i) => i + 1);
-  const postDays = new Map([[2, 0], [5, 1], [8, 2], [11, 3], [15, 4], [18, 5], [22, 0], [25, 2]]);
+/* ------------------------------------------------------------------ */
+/* Solution: before and after Raelo                                    */
+/* ------------------------------------------------------------------ */
+
+export function BeforeAfter() {
+  const days = Array.from({ length: 21 }, (_, i) => i + 1);
+  const scattered = new Set([3, 4, 15]);
+  const planned = new Map([[2, 0], [5, 1], [7, 2], [9, 3], [12, 5], [14, 0], [16, 2], [19, 1]]);
+
   return (
-    <div
-      role="img"
-      aria-label="A month of posts scheduled on a content calendar"
-      className="flex min-h-[360px] items-center justify-center bg-black/20 p-6 sm:p-10"
-    >
-      <div className="w-full max-w-md rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
-        <div className="mb-3 flex items-center justify-between text-white">
-          <p className="text-sm font-black">October</p>
-          <p className="text-[11px] text-white/50">8 posts scheduled</p>
-        </div>
-        <div className="grid grid-cols-7 gap-1.5">
-          {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-            <p key={i} className="text-center text-[9px] font-bold text-white/40">{d}</p>
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div role="img" aria-label="Before: random ideas, a blank calendar and inconsistent posting" className="rounded-2xl border border-dashed border-white/20 p-5">
+        <p className="flex items-center gap-2 text-[11px] font-bold tracking-[0.16em] text-white/50">
+          <X className="h-3.5 w-3.5" /> BEFORE
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {["post something?", "promo again…", "what do we say?"].map((note, i) => (
+            <span
+              key={note}
+              className="rounded-md bg-white/10 px-2.5 py-1.5 text-[11px] text-white/60"
+              style={{ transform: `rotate(${[-3, 2, -1.5][i]}deg)` }}
+            >
+              {note}
+            </span>
           ))}
-          {days.map((day) => {
-            const tile = postDays.has(day) ? TILES[postDays.get(day)!] : null;
-            return tile ? (
-              <PostTile key={day} tile={tile} className="!p-1 [&_p]:!text-[5px] sm:[&_p]:!text-[7px]" />
+        </div>
+        <div className="mt-5 grid grid-cols-7 gap-1.5">
+          {days.map((d) => (
+            <span key={d} className={cn("aspect-square rounded-md", scattered.has(d) ? "bg-white/30" : "bg-white/[0.06]")} />
+          ))}
+        </div>
+        <p className="mt-4 text-xs text-white/45">Random ideas · Blank calendar · Inconsistent posting</p>
+      </div>
+
+      <div role="img" aria-label="After: a strategy, planned content and a consistent presence" className="rounded-2xl bg-white p-5 text-[#080d16]">
+        <p className="flex items-center gap-2 text-[11px] font-bold tracking-[0.16em] text-[#ed1c24]">
+          <Check className="h-3.5 w-3.5" strokeWidth={3} /> AFTER
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {["Goal: more bookings", "Audience: young families", "3 posts a week"].map((note) => (
+            <span key={note} className="rounded-md bg-[#080d16] px-2.5 py-1.5 text-[11px] font-semibold text-white">
+              {note}
+            </span>
+          ))}
+        </div>
+        <div className="mt-5 grid grid-cols-7 gap-1.5">
+          {days.map((d) =>
+            planned.has(d) ? (
+              <PostTile key={d} tile={TILES[planned.get(d)!]} className="rounded-md p-0 [&>p]:hidden" />
             ) : (
-              <div key={day} className="aspect-square rounded-lg bg-white/5 p-1 text-[8px] text-white/30">{day}</div>
-            );
-          })}
+              <span key={d} className="aspect-square rounded-md bg-black/[0.05]" />
+            ),
+          )}
+        </div>
+        <p className="mt-4 text-xs text-black/55">Strategy · Planned content · Consistent presence</p>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Showcase: examples of each kind of content                          */
+/* ------------------------------------------------------------------ */
+
+function Label({ children }: { children: React.ReactNode }) {
+  return <p className="mt-3 text-xs font-semibold text-white/60">{children}</p>;
+}
+
+export function InstagramPostSample() {
+  return (
+    <figure className="h-full">
+      <div className="overflow-hidden rounded-2xl bg-white text-[#080d16]">
+        <div className="flex items-center gap-2 px-3 py-2.5">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ed1c24] text-[11px] font-black text-white">A</span>
+          <p className="text-xs font-bold">adaskitchen</p>
+          <span className="ml-auto text-black/30">•••</span>
+        </div>
+        <div className="relative aspect-square overflow-hidden bg-[#080d16] p-6 text-white sm:p-8">
+          <p className="text-[11px] font-bold tracking-[0.2em] text-[#ed1c24]">NEW COLLECTION</p>
+          <p className="mt-3 text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl">
+            Fresh flavours.
+            <br />
+            Every Friday.
+          </p>
+          <span className="absolute -bottom-16 -right-16 h-56 w-56 rounded-full bg-[#ed1c24]" />
+          <span className="absolute bottom-8 right-8 h-20 w-20 rounded-full border-[10px] border-white" />
+          <p className="absolute bottom-6 left-6 text-xs font-semibold text-white/70 sm:left-8">Order from 9am</p>
+        </div>
+        <div className="flex items-center gap-4 px-3 py-2.5 text-black/70">
+          <Heart className="h-4 w-4" />
+          <MessageCircle className="h-4 w-4" />
+          <Send className="h-4 w-4" />
         </div>
       </div>
+      <Label>Instagram post</Label>
+    </figure>
+  );
+}
+
+export function CarouselSample() {
+  const slides = [
+    { bg: RED, fg: "#fff", n: "1/5", title: "5 ways to keep customers coming back" },
+    { bg: "#fff", fg: DARK, n: "2/5", title: "Reply to every message" },
+    { bg: BLUSH, fg: DARK, n: "3/5", title: "Reward regulars" },
+  ];
+  return (
+    <figure>
+      <div className="flex gap-2 overflow-hidden">
+        {slides.map((s, i) => (
+          <div
+            key={s.n}
+            className={cn("relative aspect-square shrink-0 rounded-xl p-4", i === 0 ? "w-[44%]" : "w-[36%]")}
+            style={{ background: s.bg, color: s.fg }}
+          >
+            <p className="text-[10px] font-bold opacity-60">{s.n}</p>
+            <p className={cn("mt-2 font-black leading-tight", i === 0 ? "text-lg sm:text-xl" : "text-sm")}>{s.title}</p>
+            {i === 0 && <p className="absolute bottom-3 right-3 text-[10px] font-bold opacity-80">Swipe →</p>}
+          </div>
+        ))}
+      </div>
+      <Label>Carousel</Label>
+    </figure>
+  );
+}
+
+export function PromoSample() {
+  return (
+    <figure>
+      <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#ed1c24] p-5 text-white">
+        <p className="text-[10px] font-bold tracking-[0.18em] text-white/80">THIS WEEKEND ONLY</p>
+        <p className="mt-2 text-6xl font-black leading-none tracking-tighter">20%</p>
+        <p className="text-2xl font-black leading-none">OFF</p>
+        <span className="absolute bottom-4 left-5 rounded-full bg-white px-3 py-1.5 text-[11px] font-black text-[#ed1c24]">Shop now</span>
+        <span className="absolute -right-6 -top-6 h-24 w-24 rounded-full border-[14px] border-white/25" />
+      </div>
+      <Label>Promotional graphic</Label>
+    </figure>
+  );
+}
+
+export function EducationalSample() {
+  return (
+    <figure>
+      <div className="relative aspect-square overflow-hidden rounded-2xl bg-white p-5 text-[#080d16]">
+        <p className="text-[10px] font-bold tracking-[0.18em] text-[#ed1c24]">DID YOU KNOW?</p>
+        <p className="mt-2 text-base font-black leading-tight sm:text-xl">Posts with a clear next step get more replies.</p>
+        <div className="absolute bottom-5 left-5 right-5 hidden space-y-1.5 sm:block">
+          {[90, 70, 45].map((w) => (
+            <span key={w} className="block h-2 rounded-full bg-[#080d16]/10">
+              <span className="block h-2 rounded-full bg-[#080d16]" style={{ width: `${w}%` }} />
+            </span>
+          ))}
+        </div>
+      </div>
+      <Label>Educational post</Label>
+    </figure>
+  );
+}
+
+export function ProductSample() {
+  return (
+    <figure>
+      <div className="relative aspect-[2/1] overflow-hidden rounded-2xl bg-[#fff5ea] p-5 text-[#080d16] sm:aspect-square">
+        <p className="text-[10px] font-bold tracking-[0.18em] text-black/50">BESTSELLER</p>
+        <p className="mt-1 text-xl font-black leading-tight">Shea body butter</p>
+        <div className="absolute bottom-6 left-1/2 h-24 w-20 -translate-x-1/2 rounded-t-[2rem] rounded-b-xl bg-[#080d16]">
+          <span className="absolute inset-x-3 top-8 h-6 rounded bg-[#ed1c24]" />
+        </div>
+        <span className="absolute bottom-5 right-4 rounded-full bg-[#ed1c24] px-2.5 py-1 text-[11px] font-black text-white">₦8,500</span>
+      </div>
+      <Label>Product content</Label>
+    </figure>
+  );
+}
+
+export function CampaignSample() {
+  return (
+    <figure>
+      <div className="grid grid-cols-3 gap-2">
+        {["3", "2", "1"].map((n, i) => (
+          <div
+            key={n}
+            className={cn(
+              "flex aspect-[4/5] flex-col justify-between rounded-xl p-3",
+              i === 2 ? "bg-[#ed1c24] text-white" : "bg-white text-[#080d16]",
+            )}
+          >
+            <p className="text-[9px] font-bold tracking-[0.14em] opacity-60">GRAND OPENING</p>
+            <p className="text-4xl font-black leading-none">{n}</p>
+            <p className="text-[10px] font-semibold opacity-70">{n === "1" ? "day to go" : "days to go"}</p>
+          </div>
+        ))}
+      </div>
+      <Label>Campaign content</Label>
+    </figure>
+  );
+}
+
+export function CalendarSample() {
+  const days = Array.from({ length: 28 }, (_, i) => i + 1);
+  const postDays = new Map([[2, 0], [4, 2], [7, 1], [9, 3], [11, 5], [14, 0], [16, 2], [18, 4], [21, 1], [23, 3], [25, 5], [28, 0]]);
+  return (
+    <figure>
+      <div className="rounded-2xl bg-white p-4 text-[#080d16]">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-black">October</p>
+          <p className="text-[11px] text-black/45">12 posts planned</p>
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
+            <p key={i} className="text-center text-[9px] font-bold text-black/35">{d}</p>
+          ))}
+          {days.map((day) =>
+            postDays.has(day) ? (
+              <PostTile key={day} tile={TILES[postDays.get(day)!]} className="rounded p-0.5 [&>p:first-child]:hidden [&>p]:text-[6px]" />
+            ) : (
+              <span key={day} className="aspect-square rounded bg-black/[0.04] p-0.5 text-[8px] text-black/30">{day}</span>
+            ),
+          )}
+        </div>
+      </div>
+      <Label>Content calendar</Label>
+    </figure>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Results: the same message as a plain post and as a designed one     */
+/* ------------------------------------------------------------------ */
+
+const PAIRS = [
+  {
+    label: "Announcement",
+    before: "We are open this Saturday. Come and buy.",
+    after: { kicker: "THIS SATURDAY", title: "Doors open at 10am.", note: "See you there", bg: RED, fg: "#fff" },
+  },
+  {
+    label: "Educational",
+    before: "Tips for caring for your skin in harmattan.",
+    after: { kicker: "HARMATTAN SKIN GUIDE", title: "3 steps to soft skin all season.", note: "Save this post", bg: DARK, fg: "#fff" },
+  },
+  {
+    label: "Promotion",
+    before: "Discount on all items this week.",
+    after: { kicker: "THIS WEEK ONLY", title: "15% off everything.", note: "Use code RAELO15", bg: BLUSH, fg: DARK },
+  },
+];
+
+export function ResultPairs() {
+  return (
+    <div className="grid gap-5 lg:grid-cols-3">
+      {PAIRS.map((pair) => (
+        <figure key={pair.label} className="rounded-3xl bg-[#f6f6f7] p-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="mb-2 text-[10px] font-bold tracking-[0.16em] text-black/40">BEFORE</p>
+              <div className="flex aspect-[4/5] items-center rounded-xl bg-white p-3 ring-1 ring-black/[0.06]">
+                <p className="text-[12px] leading-snug text-black/55">{pair.before}</p>
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[10px] font-bold tracking-[0.16em] text-[#ed1c24]">WITH RAELO</p>
+              <div
+                className="relative flex aspect-[4/5] flex-col overflow-hidden rounded-xl p-3"
+                style={{ background: pair.after.bg, color: pair.after.fg }}
+              >
+                <p className="text-[8px] font-bold tracking-[0.14em] opacity-70">{pair.after.kicker}</p>
+                <p className="mt-1.5 text-[17px] font-black leading-[1.05] tracking-tight">{pair.after.title}</p>
+                <p className="mt-auto text-[10px] font-bold opacity-80">{pair.after.note}</p>
+                <span className="absolute -bottom-6 -right-6 h-16 w-16 rounded-full opacity-25" style={{ background: pair.after.fg }} />
+              </div>
+            </div>
+          </div>
+          <figcaption className="mt-3 text-sm font-bold text-[#080d16]">{pair.label}</figcaption>
+        </figure>
+      ))}
     </div>
   );
 }
