@@ -1,4 +1,4 @@
-import { Check, Heart, MessageCircle, Send, X } from "lucide-react";
+import { Check, Download, Heart, MessageCircle, Send } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -92,7 +92,7 @@ export function HeroWorkspace() {
           </div>
 
           <div className="hidden sm:block">
-            <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#ed1c24] p-5 text-white">
+            <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#ed1c24] p-5 text-white lg:aspect-[4/3]">
               <p className="text-[10px] font-bold tracking-[0.18em] text-white/75">NEW THIS WEEKEND</p>
               <p className="mt-2 text-[28px] font-black leading-[0.95] tracking-tight">Weekend menu is here.</p>
               <p className="mt-3 text-[11px] font-semibold text-white/80">Saturday from 10am</p>
@@ -179,69 +179,6 @@ export function HandledVisual() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Before vs after                                                     */
-/* ------------------------------------------------------------------ */
-
-export function BeforeAfter() {
-  const days = Array.from({ length: 21 }, (_, i) => i + 1);
-  const scattered = new Set([3, 4, 15]);
-  // Light tiles only, so every planned post shows on the dark card.
-  const planned = new Map([[2, 0], [5, 2], [7, 3], [9, 5], [12, 0], [14, 2], [16, 3], [19, 5]]);
-
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <div className="rounded-3xl border border-dashed border-black/15 bg-white p-6 sm:p-8">
-        <p className="flex items-center gap-2 text-xs font-bold tracking-[0.16em] text-black/45">
-          <X className="h-4 w-4" /> WITHOUT RAELO
-        </p>
-        <p className="mt-5 text-3xl font-black leading-tight tracking-tight text-black/80">“What should we post?”</p>
-        <ul className="mt-6 grid gap-x-4 gap-y-3 sm:grid-cols-2 text-[15px] text-black/55">
-          {["No ideas", "No time", "Random posting", "Inconsistent presence"].map((t) => (
-            <li key={t} className="flex items-center gap-2.5">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/[0.06]">
-                <X className="h-3 w-3" />
-              </span>
-              {t}
-            </li>
-          ))}
-        </ul>
-        <div role="img" aria-label="A mostly empty content calendar" className="mt-8 grid grid-cols-7 gap-1.5">
-          {days.map((d) => (
-            <span key={d} className={cn("aspect-square rounded-md", scattered.has(d) ? "bg-black/20" : "bg-black/[0.05]")} />
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-3xl bg-[#080d16] p-6 text-white sm:p-8">
-        <p className="flex items-center gap-2 text-xs font-bold tracking-[0.16em] text-[#ed1c24]">
-          <Check className="h-4 w-4" strokeWidth={3} /> WITH RAELO
-        </p>
-        <p className="mt-5 text-3xl font-black leading-tight tracking-tight">“It&apos;s already done.”</p>
-        <ul className="mt-6 grid gap-x-4 gap-y-3 sm:grid-cols-2 text-[15px] text-white/80">
-          {["Content planned", "Content created", "Calendar organised", "Ready to publish", "Consistent presence"].map((t) => (
-            <li key={t} className="flex items-center gap-2.5">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#ed1c24]">
-                <Check className="h-3 w-3" strokeWidth={3} />
-              </span>
-              {t}
-            </li>
-          ))}
-        </ul>
-        <div role="img" aria-label="A content calendar with posts planned through the month" className="mt-8 grid grid-cols-7 gap-1.5">
-          {days.map((d) =>
-            planned.has(d) ? (
-              <PostTile key={d} tile={TILES[planned.get(d)!]} className="rounded-md p-0 [&>p]:hidden" />
-            ) : (
-              <span key={d} className="aspect-square rounded-md bg-white/[0.07]" />
-            ),
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Showcase: examples of each kind of content                          */
 /* ------------------------------------------------------------------ */
 
@@ -249,7 +186,7 @@ function Label({ children }: { children: React.ReactNode }) {
   return <p className="mt-3 text-xs font-semibold text-white/60">{children}</p>;
 }
 
-export function InstagramPostSample() {
+export function InstagramPostSample({ compact }: { compact?: boolean } = {}) {
   return (
     <figure className="h-full">
       <div className="overflow-hidden rounded-2xl bg-white text-[#080d16]">
@@ -258,16 +195,16 @@ export function InstagramPostSample() {
           <p className="text-xs font-bold">adaskitchen</p>
           <span className="ml-auto text-black/30">•••</span>
         </div>
-        <div className="relative aspect-square overflow-hidden bg-[#080d16] p-6 text-white sm:p-8">
+        <div className={cn("relative aspect-square overflow-hidden bg-[#080d16] text-white", compact ? "p-5" : "p-6 sm:p-8")}>
           <p className="text-[11px] font-bold tracking-[0.2em] text-[#ed1c24]">NEW COLLECTION</p>
-          <p className="mt-3 text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl">
+          <p className={cn("mt-3 font-black leading-[0.95] tracking-tight", compact ? "text-3xl" : "text-4xl sm:text-5xl")}>
             Fresh flavours.
             <br />
             Every Friday.
           </p>
-          <span className="absolute -bottom-16 -right-16 h-56 w-56 rounded-full bg-[#ed1c24]" />
-          <span className="absolute bottom-8 right-8 h-20 w-20 rounded-full border-[10px] border-white" />
-          <p className="absolute bottom-6 left-6 text-xs font-semibold text-white/70 sm:left-8">Order from 9am</p>
+          <span className={cn("absolute rounded-full bg-[#ed1c24]", compact ? "-bottom-12 -right-12 h-32 w-32" : "-bottom-16 -right-16 h-56 w-56")} />
+          {!compact && <span className="absolute bottom-8 right-8 h-20 w-20 rounded-full border-[10px] border-white" />}
+          <p className={cn("absolute bottom-6 text-xs font-semibold text-white/70", compact ? "left-5" : "left-6 sm:left-8")}>Order from 9am</p>
         </div>
         <div className="flex items-center gap-4 px-3 py-2.5 text-black/70">
           <Heart className="h-4 w-4" />
@@ -309,7 +246,7 @@ export function CarouselSample() {
 export function PromoSample() {
   return (
     <figure>
-      <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#ed1c24] p-5 text-white">
+      <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#ed1c24] p-5 text-white lg:aspect-[4/3]">
         <p className="text-[10px] font-bold tracking-[0.18em] text-white/80">THIS WEEKEND ONLY</p>
         <p className="mt-2 text-5xl font-black leading-none tracking-tighter sm:text-6xl">20%</p>
         <p className="text-2xl font-black leading-none">OFF</p>
@@ -324,7 +261,7 @@ export function PromoSample() {
 export function EducationalSample() {
   return (
     <figure>
-      <div className="relative aspect-square overflow-hidden rounded-2xl bg-white p-5 text-[#080d16]">
+      <div className="relative aspect-square overflow-hidden rounded-2xl bg-white p-5 text-[#080d16] lg:aspect-[4/3]">
         <p className="text-[10px] font-bold tracking-[0.18em] text-[#ed1c24]">DID YOU KNOW?</p>
         <p className="mt-2 text-base font-black leading-tight sm:text-xl">Posts with a clear next step get more replies.</p>
         <div className="absolute bottom-5 left-5 right-5 hidden space-y-1.5 sm:block">
@@ -343,7 +280,7 @@ export function EducationalSample() {
 export function ProductSample() {
   return (
     <figure>
-      <div className="relative aspect-[2/1] overflow-hidden rounded-2xl bg-[#fff5ea] p-5 text-[#080d16] sm:aspect-square">
+      <div className="relative aspect-[2/1] overflow-hidden rounded-2xl bg-[#fff5ea] p-5 text-[#080d16] sm:aspect-square lg:aspect-[4/3]">
         <p className="text-[10px] font-bold tracking-[0.18em] text-black/50">BESTSELLER</p>
         <p className="mt-1 text-xl font-black leading-tight">Shea body butter</p>
         <div className="absolute bottom-6 left-1/2 h-24 w-20 -translate-x-1/2 rounded-t-[2rem] rounded-b-xl bg-[#080d16]">
@@ -382,7 +319,7 @@ export function CampaignSample() {
 export function CaptionSample() {
   return (
     <figure>
-      <div className="flex h-full flex-col rounded-2xl bg-white p-5 text-[#080d16]">
+      <div className="rounded-2xl bg-white p-5 text-[#080d16]">
         <p className="text-[10px] font-bold tracking-[0.16em] text-black/40">CAPTION · INSTAGRAM</p>
         <p className="mt-3 text-[13px] leading-[1.6] text-black/75">
           Fresh flavours, every Friday. This week: smoky jollof, peppered chicken and our new zobo.
@@ -472,6 +409,88 @@ export function ResultPairs() {
           </div>
           <figcaption className="mt-3 text-sm font-bold text-[#080d16]">{pair.label}</figcaption>
         </figure>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Showcase: the delivery a client actually receives                   */
+/* ------------------------------------------------------------------ */
+
+const FILES = ["01-weekend-menu.png", "02-post-at-7pm.png", "03-friday-offer.png", "captions.txt"];
+
+export function DownloadSample() {
+  return (
+    <figure>
+      <div className="rounded-2xl bg-white p-4 text-[#080d16]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold tracking-[0.16em] text-[#ed1c24]">OCTOBER BATCH</p>
+            <p className="text-sm font-black">12 posts · 12 captions</p>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ed1c24] px-3 py-1.5 text-[11px] font-bold text-white">
+            <Download className="h-3 w-3" /> Download all
+          </span>
+        </div>
+        <ul className="mt-4 divide-y divide-black/[0.06] text-[12px]">
+          {FILES.map((f, i) => (
+            <li key={f} className="flex items-center gap-2.5 py-2">
+              <span className="h-6 w-6 shrink-0 rounded" style={{ background: i === 3 ? "#f6f6f7" : TILES[i].bg }} />
+              <span className="truncate font-semibold">{f}</span>
+              <Download className="ml-auto h-3.5 w-3.5 text-black/35" />
+            </li>
+          ))}
+        </ul>
+      </div>
+      <Label>Ready to download</Label>
+    </figure>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Built for: an example per audience                                  */
+/* ------------------------------------------------------------------ */
+
+export function AudienceArt({ kind }: { kind: "owner" | "marketer" | "agency" }) {
+  if (kind === "owner") {
+    return (
+      <div aria-hidden className="flex h-44 items-center justify-center gap-3 bg-[#fff5ea] p-5">
+        <div className="relative aspect-square h-full overflow-hidden rounded-xl bg-[#ed1c24] p-3 text-white">
+          <p className="text-[8px] font-bold tracking-[0.14em] opacity-80">NEW IN STORE</p>
+          <p className="mt-1 text-sm font-black leading-tight">Fresh stock, this Friday.</p>
+          <span className="absolute -bottom-5 -right-5 h-14 w-14 rounded-full bg-[#080d16]" />
+        </div>
+        <div className="flex h-full flex-col justify-between">
+          <PostTile tile={TILES[1]} className="h-[46%] w-auto" />
+          <PostTile tile={TILES[2]} className="h-[46%] w-auto" />
+        </div>
+      </div>
+    );
+  }
+  if (kind === "marketer") {
+    return (
+      <div aria-hidden className="flex h-44 flex-col justify-center gap-3 bg-[#080d16] p-5">
+        <p className="text-[10px] font-bold tracking-[0.14em] text-white/50">CAMPAIGN · LAUNCH WEEK</p>
+        <div className="grid grid-cols-4 gap-2">
+          {[0, 2, 3, 5].map((i) => (
+            <PostTile key={i} tile={TILES[i]} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div aria-hidden className="grid h-44 grid-cols-3 gap-2 bg-[#fde8e9] p-5">
+      {[
+        { name: "Ada's Kitchen", tile: TILES[0] },
+        { name: "Glow Skin", tile: TILES[1] },
+        { name: "Kora Homes", tile: TILES[3] },
+      ].map((brand) => (
+        <div key={brand.name} className="flex flex-col gap-1.5 rounded-xl bg-white p-2">
+          <p className="truncate text-[9px] font-bold text-[#080d16]">{brand.name}</p>
+          <PostTile tile={brand.tile} />
+        </div>
       ))}
     </div>
   );
