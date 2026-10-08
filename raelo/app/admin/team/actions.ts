@@ -7,10 +7,10 @@ import { logActivity } from "@/lib/activity";
 import { authorize } from "@/lib/auth";
 import { createInvitedUser, passwordSetupLink } from "@/lib/better-auth";
 import { db, schema } from "@/lib/db";
+import type { TeamRole } from "@/lib/db/types";
 import { afterResponse, sendAccountEmail } from "@/lib/notifications";
+import { ROLE_LABELS, TEAM_ROLES } from "@/lib/roles";
 
-const TEAM_ROLES = ["admin", "account_manager", "designer"] as const;
-type TeamRole = (typeof TEAM_ROLES)[number];
 
 /**
  * Adds a team member. New emails get an account and an invite link that
@@ -50,11 +50,11 @@ export async function inviteTeamMember(formData: FormData) {
     .set({ role, is_active: true, ...(fullName && !existing ? { full_name: fullName } : {}) })
     .where(eq(schema.profiles.id, userId));
 
-  let message = `${email} already had an account and is now a ${role.replace("_", " ")}.`;
+  let message = `${email} already had an account and is now ${ROLE_LABELS[role].toLowerCase()}.`;
   if (!existing) {
     const url = await passwordSetupLink(userId, 24);
     await afterResponse(() =>
-      sendAccountEmail("team_invite", { email, name: fullName, userId }, { url, role: role.replace("_", " ") }),
+      sendAccountEmail("team_invite", { email, name: fullName, userId }, { url, role: ROLE_LABELS[role].toLowerCase() }),
     );
     message = process.env.RESEND_API_KEY
       ? `Invite sent to ${email}.`
@@ -73,7 +73,7 @@ export async function updateTeamMember(profileId: string, change: { role?: strin
 
   const patch: { role?: string; is_active?: boolean } = {};
   if (change.role !== undefined) {
-    if (![...TEAM_ROLES, "client"].includes(change.role)) return { error: "Invalid role." };
+    if (![...TEAM_ROLES, "client"].includes(change.role as TeamRole)) return { error: "Invalid role." };
     patch.role = change.role;
   }
   if (change.is_active !== undefined) patch.is_active = Boolean(change.is_active);

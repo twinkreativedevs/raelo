@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowUpRight, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -14,8 +15,8 @@ export function AdminPageHeader({
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-black tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-sm text-black/60">{description}</p>}
+        <h1 className="text-[28px] font-black leading-tight tracking-tight">{title}</h1>
+        {description && <p className="mt-1 max-w-2xl text-sm text-black/55">{description}</p>}
       </div>
       {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </div>
@@ -34,10 +35,10 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={cn("rounded-2xl bg-white p-5 shadow-sm", className)}>
+    <section className={cn("card p-5 sm:p-6", className)}>
       {(title || action) && (
-        <div className="mb-4 flex items-center justify-between gap-4">
-          {title && <h2 className="font-bold">{title}</h2>}
+        <div className="mb-5 flex items-center justify-between gap-4">
+          {title && <h2 className="text-base font-black tracking-tight">{title}</h2>}
           {action}
         </div>
       )}
@@ -51,22 +52,52 @@ export function StatCard({
   value,
   hint,
   href,
+  icon: Icon,
+  tone = "default",
 }: {
   label: string;
   value: string | number;
   hint?: string;
   href?: string;
+  icon?: LucideIcon;
+  /** "dark" for the headline number, "alert" for something needing action. */
+  tone?: "default" | "dark" | "alert";
 }) {
+  const dark = tone === "dark";
   const body = (
     <>
-      <p className="text-xs font-bold uppercase tracking-widest text-black/40">{label}</p>
-      <p className="mt-2 text-2xl font-black">{value}</p>
-      {hint && <p className="mt-1 text-xs text-black/50">{hint}</p>}
+      <div className="flex items-start justify-between gap-3">
+        <p className={cn("text-xs font-bold uppercase tracking-[0.12em]", dark ? "text-white/50" : "text-black/40")}>{label}</p>
+        {Icon && (
+          <span
+            className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+              dark ? "bg-[#ed1c24] text-white" : tone === "alert" ? "bg-amber-50 text-amber-600" : "bg-[#fdeced] text-[#ed1c24]",
+            )}
+          >
+            <Icon className="h-[18px] w-[18px]" />
+          </span>
+        )}
+      </div>
+      <p className="mt-3 truncate text-[28px] font-black leading-none tracking-tight">{value}</p>
+      {hint && (
+        <p className={cn("mt-2 flex items-center gap-1 text-xs", dark ? "text-white/55" : "text-black/50")}>
+          {hint}
+          {href && <ArrowUpRight className="h-3.5 w-3.5 opacity-60" />}
+        </p>
+      )}
     </>
   );
-  const className = "block rounded-2xl bg-white p-5 shadow-sm";
+  const className = cn(
+    "block p-5",
+    dark
+      ? "relative overflow-hidden rounded-2xl bg-[#080d16] text-white shadow-sm"
+      : tone === "alert"
+        ? "rounded-2xl border border-amber-200 bg-white"
+        : "card",
+  );
   return href ? (
-    <Link href={href} className={cn(className, "transition hover:shadow-md")}>
+    <Link href={href} className={cn(className, "transition hover:-translate-y-0.5 hover:shadow-md")}>
       {body}
     </Link>
   ) : (
@@ -95,10 +126,11 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        "inline-block rounded-full px-2 py-0.5 text-xs font-semibold capitalize",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize",
         BADGE_TONES[status] ?? "bg-black/5 text-black/70",
       )}
     >
+      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
       {status.replace(/_/g, " ")}
     </span>
   );
@@ -106,7 +138,7 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function Table({ children }: { children: React.ReactNode }) {
   return (
-    <div className="-mx-5 overflow-x-auto">
+    <div className="-mx-5 overflow-x-auto sm:-mx-6">
       <table className="w-full min-w-[640px] text-left text-sm">{children}</table>
     </div>
   );
@@ -114,18 +146,22 @@ export function Table({ children }: { children: React.ReactNode }) {
 
 export function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <th className={cn("border-b border-black/5 px-5 py-2 text-xs font-bold uppercase tracking-wider text-black/40", className)}>
+    <th className={cn("border-y border-black/[0.06] bg-black/[0.02] px-5 py-2.5 text-[11px] font-bold uppercase tracking-[0.1em] text-black/45 sm:px-6", className)}>
       {children}
     </th>
   );
 }
 
 export function Td({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return <td className={cn("border-b border-black/5 px-5 py-3 align-middle", className)}>{children}</td>;
+  return <td className={cn("border-b border-black/[0.05] px-5 py-3.5 align-middle sm:px-6", className)}>{children}</td>;
 }
 
 export function EmptyState({ children }: { children: React.ReactNode }) {
-  return <p className="py-8 text-center text-sm text-black/50">{children}</p>;
+  return (
+    <p className="rounded-xl border border-dashed border-black/10 px-6 py-10 text-center text-sm text-black/50">
+      {children}
+    </p>
+  );
 }
 
 /** Prev/next links that keep the current filters in the query string. */
@@ -159,12 +195,12 @@ export function Pagination({
       </span>
       <div className="flex gap-2">
         {page > 1 && (
-          <Link href={href(page - 1)} className="rounded-lg border border-black/10 px-3 py-1.5 font-semibold">
+          <Link href={href(page - 1)} className="rounded-xl border border-black/10 bg-white px-3 py-1.5 font-semibold transition hover:bg-black/[0.03]">
             ← Previous
           </Link>
         )}
         {page < pages && (
-          <Link href={href(page + 1)} className="rounded-lg border border-black/10 px-3 py-1.5 font-semibold">
+          <Link href={href(page + 1)} className="rounded-xl border border-black/10 bg-white px-3 py-1.5 font-semibold transition hover:bg-black/[0.03]">
             Next →
           </Link>
         )}
@@ -174,4 +210,4 @@ export function Pagination({
 }
 
 export const inputClass =
-  "h-9 rounded-lg border border-black/10 bg-white px-3 text-sm outline-none focus:border-[#ed1c24]";
+  "h-10 rounded-xl border border-black/10 bg-white px-3 text-sm outline-none transition focus:border-[#ed1c24] focus:ring-4 focus:ring-[#ed1c24]/10";

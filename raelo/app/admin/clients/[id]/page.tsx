@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireStaff } from "@/lib/auth";
+import type { TeamRole } from "@/lib/db/types";
+import { TEAM_ROLES, roleLabel } from "@/lib/roles";
 import { batchFileCounts } from "@/lib/content";
 import { schema } from "@/lib/db";
 import { isUuid } from "@/lib/format";
@@ -99,7 +101,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
         ? tx
             .select({ id: profiles.id, full_name: profiles.full_name, email: profiles.email, role: profiles.role })
             .from(profiles)
-            .where(and(inArray(profiles.role, ["admin", "account_manager", "designer"]), eq(profiles.is_active, true)))
+            .where(and(inArray(profiles.role, TEAM_ROLES), eq(profiles.is_active, true)))
             .orderBy(asc(profiles.full_name))
         : Promise.resolve(null),
       isAdmin
@@ -116,13 +118,42 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const logoUrl = await signBrandAssetUrl(brief?.logo_path);
   const handles = (brief?.social_handles ?? {}) as Record<string, string>;
   const platforms = Array.isArray(brief?.social_platforms) ? (brief!.social_platforms as string[]) : [];
-  const members = (staff ?? []).map((s) => ({ id: s.id, name: s.full_name ?? s.email ?? "Team member", role: s.role as "admin" | "designer" | "account_manager" }));
+  const members = (staff ?? []).map((s) => ({ id: s.id, name: s.full_name ?? s.email ?? "Team member", role: s.role as TeamRole }));
   const workable = subs.filter((s) => s.status === "active" || s.status === "paused");
 
   return (
     <>
       <Link href="/admin/clients" className="text-sm font-semibold text-black/50 hover:text-black">← Clients</Link>
       <AdminPageHeader title={clientLabel(client)} description={`${client.full_name ?? ""} · ${client.email}${client.phone ? ` · ${client.phone}` : ""} · joined ${formatDate(client.created_at)}`} />
+
+      <Panel title="Profile">
+        <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["Account type", client.account_type === "organization" ? "Organization" : "Individual"],
+            ["Organization", client.company_name],
+            ["Job title", client.job_title],
+            ["Industry", client.industry],
+            ["Team size", client.team_size],
+            ["Location", [client.city, client.country].filter(Boolean).join(", ")],
+            ["Website", client.website],
+            ["Phone", client.phone],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-xs font-semibold text-black/45">{label}</dt>
+              <dd className="mt-0.5 break-words font-semibold">
+                {label === "Website" && value && /^https?:\/\//i.test(value) ? (
+                  <a href={value} target="_blank" rel="noopener noreferrer nofollow" className="text-[#ed1c24] hover:underline">
+                    {value.replace(/^https?:\/\//, "")}
+                  </a>
+                ) : (
+                  value || <span className="font-normal text-black/35">—</span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {client.bio && <p className="mt-4 border-t border-black/[0.06] pt-4 text-sm leading-relaxed text-black/65">{client.bio}</p>}
+      </Panel>
 
       <Panel title="Subscriptions">
         {isAdmin && packages?.length ? (
@@ -159,7 +190,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                     {assignments.length === 0 && <span className="text-black/40">nobody assigned</span>}
                     {assignments.map((a) => (
                       <span key={a.id} className="inline-flex items-center gap-2 rounded-full bg-black/5 px-3 py-1 text-xs">
-                        {a.profiles?.full_name ?? a.profiles?.email} · {a.role.replace("_", " ")}
+                        {a.profiles?.full_name ?? a.profiles?.email} · {roleLabel(a.role).toLowerCase()}
                         {isAdmin && <ConfirmAction label="×" confirm="Remove this team member from the client?" action={removeAssignment.bind(null, a.id)} className="border-0 px-1 py-0" />}
                       </span>
                     ))}

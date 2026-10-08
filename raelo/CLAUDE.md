@@ -42,9 +42,11 @@ setup and docs/LAUNCH.md for going live.
 - Postgres rejects malformed uuids, so check route params with `isUuid()`
   (`lib/format`) and `notFound()` before querying.
 - Clients never write money, status or audit data directly.
-- Profiles: users may only change `full_name`, `company_name`, `phone`,
-  `avatar_url` (enforced by a trigger). Profiles are created by a trigger on
-  Better Auth's `user` table; never take `role` from sign-up input.
+- Profiles: users may only change their own details (`full_name`,
+  `company_name`, `phone`, `avatar_url`, `account_type` and the 0019
+  profile fields), enforced by `guard_profile_update`. Profiles are created
+  by a trigger on Better Auth's `user` table; never take `role` from
+  sign-up input.
 
 ## Sign-in
 
@@ -92,6 +94,11 @@ setup and docs/LAUNCH.md for going live.
 
 - Pages call `requireStaff(path, roles)`; every server action calls
   `authorize(roles)` first. Never rely on hidden buttons.
+- Team roles, labels and permissions live in `lib/roles.ts` (admin,
+  account manager, social media manager, content creator, designer, email
+  marketer). Only admins see money; only admins/account managers publish.
+  Adding a role means a migration (role checks + `is_staff()`) and
+  `lib/roles.ts`.
 - Admin queries run through `asUser` so RLS still applies; use `db` only
   where the notes above allow it.
 - Search input goes through `ilikePattern()` (escapes `%`, `_`, `\`).

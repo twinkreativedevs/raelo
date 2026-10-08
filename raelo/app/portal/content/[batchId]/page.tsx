@@ -66,7 +66,7 @@ export default async function BatchPage({
       </PageHeader>
 
       {batch.client_message && (
-        <div className="whitespace-pre-line rounded-2xl bg-white p-6 text-sm leading-6 text-black/70 shadow-sm">
+        <div className="whitespace-pre-line card p-6 text-sm leading-6 text-black/70">
           {batch.client_message}
         </div>
       )}
@@ -80,7 +80,7 @@ export default async function BatchPage({
             return (
               <li
                 key={item.id}
-                className="flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm"
+                className="card flex flex-col overflow-hidden"
               >
                 <div className="flex aspect-square items-center justify-center bg-black/5">
                   {preview && isImage(item) ? (

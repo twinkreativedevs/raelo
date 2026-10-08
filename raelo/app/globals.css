@@ -41,3 +41,25 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* App surfaces (client portal and admin). */
+@layer components {
+  .card {
+    @apply rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(8,13,22,0.04)];
+  }
+  .field {
+    @apply h-11 w-full rounded-xl border border-black/10 bg-white px-3.5 text-sm text-[#080d16] outline-none transition placeholder:text-black/35 focus:border-[#ed1c24] focus:ring-4 focus:ring-[#ed1c24]/10 disabled:bg-black/[0.03] disabled:text-black/50;
+  }
+  .field-label {
+    @apply mb-1.5 block text-sm font-semibold text-[#080d16];
+  }
+  .btn-primary {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#ed1c24] px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#d4171f] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ed1c24]/25 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-dark {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#080d16] px-4 text-sm font-bold text-white shadow-sm transition hover:bg-black focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-black/20 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-ghost {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-black/10 bg-white px-4 text-sm font-semibold text-[#080d16] transition hover:bg-black/[0.03] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-black/10 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+}

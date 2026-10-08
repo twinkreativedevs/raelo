@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { logActivity } from "@/lib/activity";
 import { afterResponse, notifyUser } from "@/lib/notifications";
 import { authorize } from "@/lib/auth";
+import { PUBLISH_ROLES, TEAM_ROLES } from "@/lib/roles";
 import { CONTENT_MAX_BYTES, CONTENT_MIME_TYPES, CONTENT_TYPES, PLATFORMS } from "@/lib/content-upload";
 import { schema } from "@/lib/db";
 import { CONTENT_PREFIX, deleteFiles } from "@/lib/storage";
@@ -27,7 +28,7 @@ async function attempt<T>(fn: () => Promise<T>): Promise<T | null> {
   }
 }
 
-const STAFF = ["admin", "account_manager", "designer"] as const;
+const STAFF = TEAM_ROLES;
 const text = (v: unknown, max = 2000) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -88,7 +89,7 @@ export async function updateBatch(batchId: string, input: Record<string, unknown
 }
 
 export async function setBatchStatus(batchId: string, status: "draft" | "published") {
-  const auth = await authorize(["admin", "account_manager"]);
+  const auth = await authorize(PUBLISH_ROLES);
   if (!auth) return { error: "Only admins and account managers can publish." };
   if (status !== "draft" && status !== "published") return { error: "Invalid status." };
 

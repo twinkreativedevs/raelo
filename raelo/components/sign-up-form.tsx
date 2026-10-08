@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Building2, Eye, EyeOff, Loader2, User } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
 import { safeNextPath } from "@/lib/redirect";
+import type { AccountType } from "@/lib/db/types";
 import { cn } from "@/lib/utils";
 import {
   authInputClass,
@@ -18,6 +19,11 @@ import {
   GoogleSignInButton,
 } from "@/components/google-sign-in-button";
 
+const ACCOUNT_TYPES: { value: AccountType; label: string; hint: string; icon: typeof User }[] = [
+  { value: "individual", label: "Individual", hint: "Personal brand", icon: User },
+  { value: "organization", label: "Organization", hint: "Business or team", icon: Building2 },
+];
+
 export function SignUpForm({
   className,
   next,
@@ -28,6 +34,8 @@ export function SignUpForm({
   googleEnabled?: boolean;
 }) {
   const destination = safeNextPath(next);
+  const [accountType, setAccountType] = useState<AccountType>("individual");
+  const [companyName, setCompanyName] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -51,6 +59,8 @@ export function SignUpForm({
         password,
         name: fullName.trim(),
         phone: phone.trim(),
+        accountType,
+        companyName: accountType === "organization" ? companyName.trim() : "",
         // Where the email confirmation link lands once confirmed.
         callbackURL: destination,
       });
@@ -79,10 +89,69 @@ export function SignUpForm({
       )}
 
       <form onSubmit={handleSignUp} className="space-y-4">
+        <fieldset>
+          <legend className={authLabelClass}>I&apos;m signing up as</legend>
+          <div className="grid grid-cols-2 gap-2 rounded-2xl bg-black/[0.04] p-1">
+            {ACCOUNT_TYPES.map((option) => {
+              const selected = accountType === option.value;
+              const Icon = option.icon;
+              return (
+                <label
+                  key={option.value}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition",
+                    selected
+                      ? "bg-white font-semibold text-[#080d16] shadow-sm ring-1 ring-black/5"
+                      : "text-black/55 hover:text-black/80",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="account_type"
+                    value={option.value}
+                    checked={selected}
+                    onChange={() => setAccountType(option.value)}
+                    className="sr-only"
+                  />
+                  <span
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+                      selected ? "bg-[#ed1c24] text-white" : "bg-black/5",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="leading-tight">
+                    {option.label}
+                    <span className="block text-xs font-normal text-black/45">{option.hint}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        {accountType === "organization" && (
+          <div>
+            <label htmlFor="company-name" className={authLabelClass}>
+              Organization name
+            </label>
+            <input
+              id="company-name"
+              autoComplete="organization"
+              placeholder="Bakare Foods Ltd"
+              required
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              className={authInputClass}
+            />
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="full-name" className={authLabelClass}>
-              Full name
+              {accountType === "organization" ? "Your name" : "Full name"}
             </label>
             <input
               id="full-name"

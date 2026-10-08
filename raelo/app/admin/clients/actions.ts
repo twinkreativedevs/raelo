@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { logActivity } from "@/lib/activity";
 import { authorize } from "@/lib/auth";
+import { isAssignmentRole } from "@/lib/roles";
 import { db, schema } from "@/lib/db";
 import { isUuid } from "@/lib/format";
 import { afterResponse, notifyUser } from "@/lib/notifications";
@@ -109,7 +110,7 @@ export async function assignTeamMember(formData: FormData) {
 
   const subscriptionId = String(formData.get("subscription_id") ?? "");
   const [profileId, role] = String(formData.get("member") ?? "").split(":");
-  if (!isUuid(subscriptionId) || !isUuid(profileId) || !["designer", "account_manager"].includes(role)) {
+  if (!isUuid(subscriptionId) || !isUuid(profileId) || !isAssignmentRole(role)) {
     return { error: "Pick a team member." };
   }
 
@@ -121,7 +122,7 @@ export async function assignTeamMember(formData: FormData) {
       await tx.insert(subscription_assignments).values({
         subscription_id: subscriptionId,
         profile_id: profileId,
-        role: role as "designer" | "account_manager",
+        role,
         assigned_by: auth.profile.id,
       });
       return sub?.user_id ?? null;

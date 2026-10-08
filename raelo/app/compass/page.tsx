@@ -26,7 +26,7 @@ export default async function CompassPage({
     <AuthShell
       variant="team"
       title="Team sign in"
-      subtitle="For Raelo admins, account managers and designers."
+      subtitle="For the Raelo team: admins, managers, creators and marketers."
     >
       <StaffLoginForm next={nextPath} />
     </AuthShell>

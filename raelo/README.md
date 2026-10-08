@@ -199,6 +199,9 @@ Every table has Row Level Security. In short:
 | `client`          | Their own profile, subscriptions, orders, invoices, brief, and **published** content |
 | `designer`        | Clients/subscriptions they're assigned to; can upload draft content |
 | `account_manager` | Same as designer, and can publish content batches              |
+| `content_creator` | Same as designer (captions and content for assigned clients)   |
+| `social_media_manager` | Same as designer (plans posts for assigned clients)       |
+| `email_marketer`  | Same as designer (email campaigns for assigned clients)        |
 | `admin`           | Everything                                                     |
 
 Requests made for a signed-in user run as the database role `raelo_app`
