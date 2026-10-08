@@ -14,6 +14,7 @@ import {
   authLabelClass,
   authPrimaryButtonClass,
 } from "@/components/auth-shell";
+import { SIGNUP_KEY } from "@/components/check-email";
 import {
   AuthDivider,
   GoogleSignInButton,
@@ -70,6 +71,12 @@ export function SignUpForm({
         router.push(destination);
         router.refresh();
       } else {
+        // Lets the next page name the address and offer "Resend email".
+        try {
+          sessionStorage.setItem(SIGNUP_KEY, JSON.stringify({ email: email.trim(), next: destination }));
+        } catch {
+          // Private mode: the page still works, just without the address.
+        }
         router.push("/auth/sign-up-success");
       }
     } catch (error: unknown) {
