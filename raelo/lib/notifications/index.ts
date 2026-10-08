@@ -132,11 +132,28 @@ async function deliver(opts: {
     }
   }
 
-  if (log.length) {
+  if (log.length) await saveLog(log);
+}
+
+/**
+ * Records delivery attempts. During sign-up Better Auth sends the
+ * confirmation email before the new user (and so their profile) is
+ * committed, which fails the user_id foreign key; keep the row without
+ * the link rather than losing it.
+ */
+async function saveLog(log: (typeof schema.notification_log.$inferInsert)[]) {
+  try {
+    await db.insert(schema.notification_log).values(log);
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code;
+    if (code !== "23503") {
+      console.error("notification_log insert failed", error);
+      return;
+    }
     await db
       .insert(schema.notification_log)
-      .values(log)
-      .catch((error) => console.error("notification_log insert failed", error));
+      .values(log.map((row) => ({ ...row, user_id: null })))
+      .catch((retryError) => console.error("notification_log insert failed", retryError));
   }
 }
 
